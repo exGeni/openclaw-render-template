@@ -67,6 +67,15 @@ alphaclaw start          # reproduce the real failure
 
 Restore `CMD ["alphaclaw", "start"]` after diagnosis.
 
+## Tests
+
+Three layers (details in `tests/README.md`); CI runs all three on push via `.github/workflows/test.yml`.
+
+- `npm test` — fast unit + contract, no Docker. Unit exercises `failure-server.js` routing and the no-secret-leak property; contract statically locks in the load-bearing invariants in this doc (PATH prepend, `TMPDIR=/data/tmp`, sticky-bit `mkdir` on boot, tini/CMD wiring, and "never operate on bare `/tmp`").
+- `npm run test:e2e` — builds the image and runs it with an **empty `/data`** (tmpfs, mimicking Render's disk mount) to prove `start.sh` recreates `/data/tmp` at boot and the container stays Live. Needs Docker; slow.
+
+After touching `start.sh`, `Dockerfile`, `render.yaml`, or `failure-server.js`, run `npm test` (and `npm run test:e2e` for image-level changes).
+
 ## What NOT to do
 
 - Don't patch `node_modules/@chrysb/alphaclaw/` — gets blown away on every `npm install`. Fix at the Dockerfile/env layer instead.

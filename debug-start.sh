@@ -12,6 +12,7 @@ ls -la /usr/bin/openclaw 2>&1 || echo "absent"
 echo "--- /usr/local/bin/openclaw ---"
 ls -la /usr/local/bin/openclaw 2>&1 || echo "absent"
 echo "--- /app/node_modules/.bin (claw matches) ---"
+# shellcheck disable=SC2010  # diagnostic one-liner; ls|grep is fine here
 ls -la /app/node_modules/.bin/ 2>&1 | grep -i claw || echo "no matches"
 echo "--- env ---"
 env | sort
