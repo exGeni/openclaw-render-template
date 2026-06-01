@@ -23,6 +23,17 @@ The Dockerfile addresses this two ways (both intentional, keep both):
 1. `ENV PATH="/app/node_modules/.bin:$PATH"` — primary fix
 2. `RUN ln -sf /app/node_modules/.bin/{openclaw,alphaclaw} /usr/local/bin/...` — belt-and-suspenders so even a future refactor that drops the ENV line still works
 
+## Temp dir on the persistent disk (`/data/tmp`)
+
+Temp is routed to `/data/tmp` (the persistent disk) instead of the container's ephemeral `/tmp`, so a 24/7 service doesn't churn/fill the ephemeral layer. OpenClaw is mid-migration from hardcoded `/tmp` callsites to `TMPDIR`-aware APIs ([openclaw#11587](https://github.com/openclaw/openclaw/issues/11587)); the env-var route covers everything that respects the standard temp APIs.
+
+Set in **two** places (same belt-and-suspenders reasoning as PATH — keep both):
+
+1. `ENV TMPDIR/TEMP/TMP=/data/tmp` in the Dockerfile — primary.
+2. `export TMPDIR=… ` + `mkdir -p /data/tmp && chmod 1777` in `start.sh` — load-bearing. `/data` is a **runtime-mounted disk**, so the Dockerfile's build-time `mkdir /data/tmp` is shadowed at runtime; `start.sh` must (re)create the dir on every boot. The re-export also survives Render runtime env munging.
+
+**`/tmp` itself is deliberately left untouched** — never symlinked, bind-mounted, or moved. We only *add* `/data/tmp` as the `TMPDIR` preference; that's the whole mechanism. Any code that still hardcodes `/tmp` keeps using the container's ephemeral `/tmp`, which is fine and intended. Do **not** redirect `/tmp` wholesale: Render containers aren't privileged (`mount --bind` fails anyway), and pointing all of `/tmp` at the 10 GB disk risks filling it and adds disk I/O for every process's scratch. Leave `/tmp` be.
+
 ## Render-specific gotchas
 
 - **`dockerCommand` in `render.yaml` may not be honored** on this service. Blueprint sync has been unreliable — runtime behavior must come from Dockerfile `CMD`/`ENTRYPOINT`, not `render.yaml` overrides.
@@ -61,4 +72,6 @@ Restore `CMD ["alphaclaw", "start"]` after diagnosis.
 - Don't patch `node_modules/@chrysb/alphaclaw/` — gets blown away on every `npm install`. Fix at the Dockerfile/env layer instead.
 - Don't rely on `dockerCommand` in `render.yaml` to override `CMD` — Blueprint sync may silently ignore it. Use Dockerfile `CMD`.
 - Don't drop `ENV PATH="/app/node_modules/.bin:$PATH"` — it's load-bearing for alphaclaw's spawn behavior.
+- Don't move the `/data/tmp` creation to Dockerfile-only — the disk mount hides it; `start.sh` must `mkdir` it at boot.
+- Don't touch `/tmp` — no symlink, bind-mount, or move. Only set `TMPDIR` and leave `/tmp` be (see "Temp dir" section).
 - Don't force-push or amend on `main` after a debug detour. Add a new commit on top.

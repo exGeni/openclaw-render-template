@@ -25,7 +25,16 @@ RUN chmod +x /start.sh
 ENV PATH="/app/node_modules/.bin:$PATH"
 ENV ALPHACLAW_ROOT_DIR=/data
 
-RUN mkdir -p /data
+# Route temp onto the persistent disk instead of the container's ephemeral /tmp.
+# OpenClaw is migrating hardcoded /tmp callsites to TMPDIR-aware APIs; any code
+# that respects the standard temp env vars will land under /data/tmp.
+# NOTE: /data is a runtime-mounted disk, so this build-time mkdir is shadowed at
+# runtime — start.sh recreates /data/tmp on boot. Kept here for image self-consistency.
+ENV TMPDIR=/data/tmp
+ENV TEMP=/data/tmp
+ENV TMP=/data/tmp
+
+RUN mkdir -p /data/tmp && chmod 1777 /data/tmp
 
 EXPOSE 3000
 

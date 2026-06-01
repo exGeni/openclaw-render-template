@@ -156,6 +156,7 @@ Internet → Render :3000 (Express)
     └── memory/            ← Agent memory
 
 /data/.env                 ← Persistent env vars (managed via Setup UI)
+/data/tmp/                  ← Temp dir (TMPDIR) — kept off ephemeral /tmp, on the disk
 ```
 
 ### First boot

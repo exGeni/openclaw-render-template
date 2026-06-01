@@ -11,9 +11,18 @@ mkdir -p /data
 # spawning of openclaw, curl, etc. Force a sensible PATH explicitly.
 export PATH="/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
+# Route temp onto the persistent /data disk instead of ephemeral /tmp. The disk
+# is mounted over /data at runtime, so the Dockerfile's build-time mkdir is
+# hidden — (re)create /data/tmp here on every boot. Re-export the standard temp
+# trio too (same belt-and-suspenders reasoning as PATH above: Render's runtime
+# can munge the env even though the Dockerfile sets these via ENV).
+export TMPDIR=/data/tmp TEMP=/data/tmp TMP=/data/tmp
+mkdir -p "$TMPDIR" && chmod 1777 "$TMPDIR"
+
 {
   echo "=== boot $(date -u +%FT%TZ) ==="
   echo "PATH=$PATH"
+  echo "TMPDIR=$TMPDIR"
   echo "Starting alphaclaw..."
 } | tee -a "$LOGFILE"
 
