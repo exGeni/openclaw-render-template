@@ -26,10 +26,19 @@ npm run test:all  # everything
   the container: the `PATH` prepend (alphaclaw spawns `openclaw` by bare name),
   the `TMPDIR=/data/tmp` routing, the sticky-bit `mkdir` on boot, the tini/CMD
   wiring, and the "never touch bare `/tmp`" rule.
-- **e2e** mounts a **tmpfs over `/data`** so the dir starts empty at runtime,
-  reproducing how Render's disk mount shadows the Dockerfile's build-time
-  `mkdir`. If `/data/tmp` exists with its sticky bit afterwards, `start.sh`
-  recreated it — the exact behavior `CLAUDE.md` says must survive every boot.
+- **e2e** has two suites:
+  - `docker.bats` mounts a **tmpfs over `/data`** so the dir starts empty at
+    runtime, reproducing how Render's disk mount shadows the Dockerfile's
+    build-time `mkdir`. If `/data/tmp` exists with its sticky bit afterwards,
+    `start.sh` recreated it — the exact behavior `CLAUDE.md` says must survive
+    every boot.
+  - `stale-config.bats` seeds a real `/data` with an `openclaw.json` that still
+    references the **old `@chrysb/alphaclaw` usage-tracker plugin path** (the
+    breakage from switching the dependency to the git fork), boots the real
+    container, and asserts alphaclaw prunes the dead path so OpenClaw accepts
+    the config. Covers **both** onboarded and not-onboarded `/data`, because the
+    prune must run on every boot (in `bin/alphaclaw.js`), not only the onboarded
+    boot sequence.
 
 ## Local prerequisites
 
