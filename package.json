@@ -2,7 +2,7 @@
   "name": "openclaw-render",
   "version": "2.0.0",
   "private": true,
-  "description": "OpenClaw on Render — one-click deploy, powered by @chrysb/alphaclaw",
+  "description": "OpenClaw on Render — one-click deploy, powered by alphaclaw (garrytan/alphaclaw)",
   "scripts": {
     "dev": "docker compose up --build",
     "dev:stop": "docker compose down",
@@ -16,7 +16,7 @@
     "test:all": "npm run test && npm run test:e2e"
   },
   "dependencies": {
-    "@chrysb/alphaclaw": "0.9.18"
+    "alphaclaw": "git+https://github.com/garrytan/alphaclaw.git#main"
   },
   "engines": {
     "node": ">=22.14.0"
