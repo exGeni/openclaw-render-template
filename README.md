@@ -4,7 +4,7 @@
 
 Deploy OpenClaw to Render in one click. Get a 24/7 AI agent connected to Telegram or Discord, with your entire config and workspace backed up to GitHub. No CLI required.
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/chrysb/openclaw-render-template)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/garrytan/openclaw-render-template)
 
 ## The AlphaClaw Advantage
 
@@ -23,9 +23,7 @@ Deploy OpenClaw to Render in one click. Get a 24/7 AI agent connected to Telegra
 
 ## Pricing note
 
-Render uses **fixed-price instance tiers**, so you pay for reserved capacity regardless of utilization. An instance with enough RAM for OpenClaw (8 GB) runs ~$85/mo on Render's Standard plan. For comparison, the same workload on Railway's usage-based pricing typically costs **$5–10/mo** because an AI agent mostly idles between messages.
-
-If cost matters more than platform preference, consider the [Railway template](https://github.com/chrysb/openclaw-railway-template) instead — same one-click deploy, significantly cheaper for bursty workloads.
+Render uses **fixed-price instance tiers**, so you pay for reserved capacity regardless of utilization. An instance with enough RAM for OpenClaw (8 GB) runs ~$85/mo on Render's Standard plan.
 
 ## Deploy
 
@@ -40,7 +38,7 @@ Only one variable is needed at deploy time:
 
 Click the button to deploy:
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/chrysb/openclaw-render-template)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/garrytan/openclaw-render-template)
 
 Everything else — AI keys, GitHub credentials, channel tokens — is configured through the setup UI after your first login.
 
