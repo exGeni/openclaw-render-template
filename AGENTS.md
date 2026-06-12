@@ -1,17 +1,20 @@
 # Agent notes for openclaw-render-template
 
-This is a Docker-based one-click Render deploy of [`@chrysb/alphaclaw`](https://www.npmjs.com/package/@chrysb/alphaclaw), which wraps OpenClaw to run as a 24/7 service. Notes here are for AI agents (or future humans) who need to understand non-obvious behavior fast.
+This is a Docker-based one-click Render deploy of [`alphaclaw`](https://github.com/garrytan/alphaclaw) (the `garrytan/alphaclaw` fork), which wraps OpenClaw to run as a 24/7 service. Notes here are for AI agents (or future humans) who need to understand non-obvious behavior fast.
 
 ## Layout
 
 - `Dockerfile` — image build. `CMD` is `alphaclaw start`; `tini` is PID 1.
 - `render.yaml` — Render Blueprint config. Service is web, plan starter, port 3000, health check `/health`, `/data` 10 GB persistent disk.
-- `package.json` — pins `@chrysb/alphaclaw`. `openclaw` arrives as a transitive dep.
+- `package.json` — pins `alphaclaw` as a **git dependency** (`git+https://github.com/garrytan/alphaclaw.git#main`), not an npm-registry package. `openclaw` arrives as a transitive dep. Three non-obvious details, all load-bearing:
+  - **Explicit `git+https://`, not the `github:` shorthand.** npm's `hosted-git-info` canonicalizes GitHub deps to `git+ssh://git@github.com/…` (you'll see that in `package-lock.json`'s `resolved` — that's cosmetic). The `node:22-slim` Docker build has no SSH key, so the spec in `package.json` must force HTTPS or the build fails fetching the dep. (The Dockerfile does a fresh `npm install` from `package.json` and never copies the lockfile, so the `package.json` spec is what drives the fetch.)
+  - **The dep key is `alphaclaw`.** npm uses the key as the install-folder alias, so it lands at `node_modules/alphaclaw/` even though the fork's internal `name` is still `@chrysb/alphaclaw`. The template only ever invokes the `alphaclaw`/`openclaw` *binaries* by name, never `require("@chrysb/alphaclaw")`, so the name mismatch is harmless.
+  - **The fork carries a `prepare` script.** It builds the gitignored UI artifacts (`lib/public/dist/`, generated Tailwind CSS) at install time. npm skips `prepack` for git installs but *does* run `prepare`, so without it the setup UI ships blank.
 - `debug-start.sh` — diagnostic boot script (see "Debug path" below).
 
 ## Critical PATH detail (don't remove)
 
-`alphaclaw start` spawns `openclaw` by **bare name** in two places inside `node_modules/@chrysb/alphaclaw/lib/server/gateway.js`:
+`alphaclaw start` spawns `openclaw` by **bare name** in two places inside `node_modules/alphaclaw/lib/server/gateway.js`:
 
 - A preflight `execSync("openclaw plugins list --json", ...)`
 - The gateway run: `spawn("openclaw", ["gateway", "run"], ...)`
@@ -78,7 +81,7 @@ After touching `start.sh`, `Dockerfile`, `render.yaml`, or `failure-server.js`, 
 
 ## What NOT to do
 
-- Don't patch `node_modules/@chrysb/alphaclaw/` — gets blown away on every `npm install`. Fix at the Dockerfile/env layer instead.
+- Don't patch `node_modules/alphaclaw/` — gets blown away on every `npm install`. Fix at the Dockerfile/env layer instead (or, for changes to alphaclaw itself, in the `garrytan/alphaclaw` fork).
 - Don't rely on `dockerCommand` in `render.yaml` to override `CMD` — Blueprint sync may silently ignore it. Use Dockerfile `CMD`.
 - Don't drop `ENV PATH="/app/node_modules/.bin:$PATH"` — it's load-bearing for alphaclaw's spawn behavior.
 - Don't move the `/data/tmp` creation to Dockerfile-only — the disk mount hides it; `start.sh` must `mkdir` it at boot.
