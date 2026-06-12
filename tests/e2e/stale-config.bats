@@ -1,26 +1,33 @@
 #!/usr/bin/env bats
 #
-# End-to-end regression test for the "invalid OpenClaw config" boot failure.
+# End-to-end regression test for the "invalid OpenClaw config" boot failure —
+# Render-style: boot the real image against a persistent /data carrying broken
+# state, and assert OpenClaw actually reaches a WORKING state (gateway ready,
+# usage-tracker plugin loaded), not merely that a config file looks right.
 #
-# Reproduces the real-world breakage seen after switching the alphaclaw
-# dependency from the @chrysb npm package (installed at
-# /app/node_modules/@chrysb/alphaclaw/...) to the garrytan git fork (installed
-# at /app/node_modules/alphaclaw/...): the persistent disk's openclaw.json still
-# references the OLD usage-tracker plugin path, which no longer exists, so
-# OpenClaw rejects the whole config:
+# The breakage being reproduced: after switching the alphaclaw dependency from
+# the @chrysb npm package (installed at /app/node_modules/@chrysb/alphaclaw/...)
+# to the garrytan git fork (installed at /app/node_modules/alphaclaw/...), the
+# persistent disk's openclaw.json still referenced the OLD usage-tracker plugin
+# path. OpenClaw rejects the whole config:
 #
 #   plugins.load.paths: plugin: plugin path not found:
 #     /app/node_modules/@chrysb/alphaclaw/lib/plugin/usage-tracker
+#   ...
+#   [gateway] Gateway failed to start: Invalid config at /data/.openclaw/openclaw.json
 #
-# Unlike docker.bats (empty /data), this seeds a REAL /data with the stale path
-# baked into openclaw.json, boots the actual container, and asserts alphaclaw
-# migrates the config on boot. Covers BOTH states, because the prune must not be
-# gated behind onboarding:
-#   - onboarded  (onboarded.json present  => runOnboardedBootSequence runs)
-#   - NOT onboarded (no marker => only bin/alphaclaw.js's unconditional reconcile
-#                    runs; this is the case that regressed in the field)
+# Two containers cover both boot paths, because the prune must NOT be gated
+# behind onboarding:
+#   - onboarded: /data has onboarded.json + a realistic onboarded config
+#     (gateway.mode=local, as `openclaw onboard --mode local` writes). The
+#     gateway must start: logs show "[gateway] ready" and the usage-tracker
+#     plugin initialized — proof the pruned config is genuinely valid.
+#   - NOT onboarded: no marker, so alphaclaw won't launch the gateway; the
+#     unconditional reconcile in bin/alphaclaw.js must still prune the path
+#     (this is the variant that regressed in the field).
 #
-# Slow (builds an image). Run via `npm run test:e2e`. Skips if docker is absent.
+# Slow (builds an image, boots two containers). Run via `npm run test:e2e`.
+# Skips cleanly when docker is unavailable.
 
 IMAGE="openclaw-render-test:latest"
 C_ONB="openclaw-render-stale-onboarded-e2e"
@@ -29,6 +36,7 @@ PORT_ONB=13001
 PORT_NOO=13002
 STALE_PATH="/app/node_modules/@chrysb/alphaclaw/lib/plugin/usage-tracker"
 CANONICAL_PATH="/app/node_modules/alphaclaw/lib/plugin/usage-tracker"
+GATEWAY_READY_MARKER="[gateway] ready"
 
 _seed_data_dir() {
   # $1 = dir, $2 = "onboarded" | "not-onboarded"
@@ -36,8 +44,21 @@ _seed_data_dir() {
   mkdir -p "$dir/.openclaw"
   if [ "$2" = "onboarded" ]; then
     printf '{"onboarded":true}\n' >"$dir/onboarded.json"
-  fi
-  cat >"$dir/.openclaw/openclaw.json" <<JSON
+    # Realistic onboarded config: gateway.mode=local is what `openclaw onboard
+    # --mode local` writes; without it the gateway refuses to start for an
+    # unrelated reason and the test would prove nothing about the plugin path.
+    cat >"$dir/.openclaw/openclaw.json" <<JSON
+{
+  "gateway": { "mode": "local" },
+  "plugins": {
+    "allow": ["usage-tracker"],
+    "load": { "paths": ["$STALE_PATH"] },
+    "entries": { "usage-tracker": { "enabled": true } }
+  }
+}
+JSON
+  else
+    cat >"$dir/.openclaw/openclaw.json" <<JSON
 {
   "plugins": {
     "allow": ["usage-tracker"],
@@ -46,6 +67,7 @@ _seed_data_dir() {
   }
 }
 JSON
+  fi
 }
 
 _run_seeded() {
@@ -56,20 +78,31 @@ _run_seeded() {
     -p "$2:3000" \
     -e PORT=3000 \
     -e SETUP_PASSWORD="stale-config-test" \
-    -e OPENCLAW_GATEWAY_TOKEN="stale-config-test" \
+    -e OPENCLAW_GATEWAY_TOKEN="stale-config-test-token" \
     -e WEBHOOK_TOKEN="stale-config-test" \
     "$IMAGE" >&2
+  # Express /health comes up early; the gateway takes longer (gog install etc.).
   for _ in $(seq 1 60); do
     if curl -fsS "http://127.0.0.1:$2/health" >/dev/null 2>&1; then break; fi
     sleep 2
   done
-  # Give bin/alphaclaw.js's on-boot config reconcile a moment to write.
-  sleep 5
+}
+
+_wait_for_gateway_ready() {
+  # $1 = container name. Render marks the service Live on /health, but "working"
+  # means OpenClaw's gateway came up — wait for its ready line in the logs.
+  for _ in $(seq 1 60); do
+    if docker logs "$1" 2>&1 | grep -qF "$GATEWAY_READY_MARKER"; then return 0; fi
+    sleep 2
+  done
+  echo "gateway never became ready; logs follow:" >&2
+  docker logs "$1" >&2 || true
+  return 1
 }
 
 setup_file() {
   REPO="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
-  export REPO IMAGE C_ONB C_NOO PORT_ONB PORT_NOO STALE_PATH CANONICAL_PATH
+  export REPO IMAGE C_ONB C_NOO PORT_ONB PORT_NOO STALE_PATH CANONICAL_PATH GATEWAY_READY_MARKER
 
   command -v docker >/dev/null || skip "docker not installed"
   docker info >/dev/null 2>&1 || skip "docker daemon not running"
@@ -83,6 +116,11 @@ setup_file() {
 
   _run_seeded "$C_ONB" "$PORT_ONB" "$SEED_ONB"
   _run_seeded "$C_NOO" "$PORT_NOO" "$SEED_NOO"
+
+  _wait_for_gateway_ready "$C_ONB"
+  # The not-onboarded container never starts a gateway; give its boot reconcile
+  # a moment to write the migrated config.
+  sleep 5
 }
 
 teardown_file() {
@@ -91,11 +129,30 @@ teardown_file() {
   [ -n "$SEED_NOO" ] && rm -rf "$SEED_NOO" || true
 }
 
-# --- onboarded ---------------------------------------------------------------
+# --- onboarded: OpenClaw must reach a working state --------------------------
 
 @test "onboarded: container stays Live with seeded stale plugin path" {
   run curl -fsS "http://127.0.0.1:${PORT_ONB}/health"
   [ "$status" -eq 0 ]
+}
+
+@test "onboarded: gateway logs '[gateway] ready' — OpenClaw started properly" {
+  run docker logs "$C_ONB"
+  grep -qF "$GATEWAY_READY_MARKER" <<<"$output"
+}
+
+@test "onboarded: usage-tracker plugin actually loaded in the gateway" {
+  # Loading is the strongest proof the pruned path is valid: the gateway only
+  # initializes the plugin after resolving plugins.load.paths successfully.
+  run docker logs "$C_ONB"
+  grep -qE "\[usage-tracker\] initialized|plugin: usage-tracker" <<<"$output"
+}
+
+@test "onboarded: logs contain no invalid-config or plugin-path failures" {
+  run docker logs "$C_ONB"
+  ! grep -qF "OpenClaw config is invalid" <<<"$output"
+  ! grep -qiF "plugin path not found" <<<"$output"
+  ! grep -qF "Gateway failed to start" <<<"$output"
 }
 
 @test "onboarded: boot pruned the stale @chrysb usage-tracker path" {
@@ -106,14 +163,14 @@ teardown_file() {
   grep -qF "$CANONICAL_PATH" <<<"$output"
 }
 
-@test "onboarded: openclaw config validate no longer reports a missing plugin path" {
+@test "onboarded: openclaw config validate accepts the migrated config" {
   run docker exec "$C_ONB" sh -c "openclaw config validate 2>&1 || true"
   echo "validate: $output" >&2
   ! grep -qF "$STALE_PATH" <<<"$output"
   ! grep -qiF "plugin path not found" <<<"$output"
 }
 
-# --- NOT onboarded (the field regression) ------------------------------------
+# --- NOT onboarded: prune must still run (the field regression) --------------
 
 @test "not-onboarded: container stays Live with seeded stale plugin path" {
   run curl -fsS "http://127.0.0.1:${PORT_NOO}/health"
@@ -128,7 +185,7 @@ teardown_file() {
   grep -qF "$CANONICAL_PATH" <<<"$output"
 }
 
-@test "not-onboarded: openclaw config validate no longer reports a missing plugin path" {
+@test "not-onboarded: openclaw config validate accepts the migrated config" {
   run docker exec "$C_NOO" sh -c "openclaw config validate 2>&1 || true"
   echo "validate: $output" >&2
   ! grep -qF "$STALE_PATH" <<<"$output"

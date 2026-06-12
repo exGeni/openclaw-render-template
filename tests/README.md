@@ -35,10 +35,13 @@ npm run test:all  # everything
   - `stale-config.bats` seeds a real `/data` with an `openclaw.json` that still
     references the **old `@chrysb/alphaclaw` usage-tracker plugin path** (the
     breakage from switching the dependency to the git fork), boots the real
-    container, and asserts alphaclaw prunes the dead path so OpenClaw accepts
-    the config. Covers **both** onboarded and not-onboarded `/data`, because the
-    prune must run on every boot (in `bin/alphaclaw.js`), not only the onboarded
-    boot sequence.
+    container Render-style, and asserts OpenClaw reaches a **working state**:
+    the dead path is pruned, `openclaw config validate` accepts the config, and
+    — for the onboarded variant (seeded with `gateway.mode=local`, as
+    `openclaw onboard` writes) — the logs show **`[gateway] ready`** with the
+    usage-tracker plugin actually loaded. Covers **both** onboarded and
+    not-onboarded `/data`, because the prune must run on every boot (in
+    `bin/alphaclaw.js`), not only the onboarded boot sequence.
 
 ## Local prerequisites
 
