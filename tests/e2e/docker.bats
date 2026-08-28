@@ -97,8 +97,20 @@ in_container() {
   in_container 'cat /proc/1/comm' | grep -q tini
 }
 
-@test "SECURITY: failure/landing page does not leak env secrets" {
-  run curl -fsS "http://127.0.0.1:${HOST_PORT}/"
-  [ "$status" -eq 0 ]
-  ! grep -q "$SENTINEL" <<<"$output"
+@test "SECURITY: landing page settles to 200 and never leaks env secrets" {
+  # alphaclaw 0.9.36+ answers / with a brief 503 ("AlphaClaw is updating")
+  # right after /health comes up, then a 302 to /login.html in steady state.
+  # The invariant is about the publicly reachable landing surface: it must
+  # settle to 200 (following redirects) and no response along the way —
+  # 503 body, redirect target, or final page — may contain env secrets.
+  BODY="$BATS_TEST_TMPDIR/root-body"
+  CODE="000"
+  for _ in $(seq 1 30); do
+    CODE=$(curl -sSL -o "$BODY" -w "%{http_code}" "http://127.0.0.1:${HOST_PORT}/" || echo 000)
+    ! grep -q "$SENTINEL" "$BODY"
+    [ "$CODE" = "200" ] && break
+    sleep 2
+  done
+  [ "$CODE" = "200" ]
+  ! grep -q "$SENTINEL" "$BODY"
 }
