@@ -38,5 +38,10 @@ RUN mkdir -p /data/tmp && chmod 1777 /data/tmp
 
 EXPOSE 3000
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
+# -g: tini signals the ENTIRE process group, so a TERM to PID 1 reaches
+# alphaclaw, tee, and any backoff sleep directly from the kernel. This is what
+# lets start.sh's supervise loop stay a plain foreground loop with no trap /
+# job-control machinery — bash's default TERM disposition is fine because no
+# process depends on bash forwarding anything.
+ENTRYPOINT ["/usr/bin/tini", "-g", "--"]
 CMD ["/start.sh"]

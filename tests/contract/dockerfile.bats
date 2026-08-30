@@ -39,8 +39,11 @@ setup() {
 
 # --- Init + entrypoint --------------------------------------------------------
 
-@test "Dockerfile: uses tini as PID 1" {
-  grep -Eq 'ENTRYPOINT \["/usr/bin/tini", "--"\]' "$REPO/Dockerfile"
+@test "Dockerfile: uses tini -g as PID 1 (group signaling)" {
+  # -g is load-bearing: the supervise loop in start.sh is a plain foreground
+  # loop with no traps; prompt TERM delivery to alphaclaw/tee/sleep relies on
+  # tini signaling the whole process group.
+  grep -Eq 'ENTRYPOINT \["/usr/bin/tini", "-g", "--"\]' "$REPO/Dockerfile"
 }
 
 @test "Dockerfile: CMD boots via start.sh" {
