@@ -120,6 +120,32 @@ brake_streak=0     # consecutive sub-5s exit-75 runs
 longrun_fail_streak=0
 FAILURE_EPOCH=""   # unix seconds; set on entering failure mode, cleared by a >window run
 
+# gbrain autopilot. `gbrain autopilot --install` classifies this host as its
+# "ephemeral-container" target — crontab is wiped on every deploy there — so
+# instead of installing a scheduler it emits /data/.gbrain/start-autopilot.sh
+# and asks to be launched from the boot path. This is that boot path.
+#
+# Deliberately OUTSIDE the supervisor loop: autopilot is an independent daemon
+# that outlives an alphaclaw restart, so launching it inside the loop would
+# spawn a fresh one on every relaunch.
+#
+# $HOME is reset from the image on every recreate (only /data persists) and the
+# generated script writes its log and pid under $HOME/.gbrain, so that dir must
+# be (re)created each boot — the same reasoning as /data/tmp above.
+#
+# A missing script just means gbrain is not installed yet: a normal no-op. A
+# failure here must never keep alphaclaw from booting.
+if [ -x /data/.gbrain/start-autopilot.sh ]; then
+  mkdir -p "$HOME/.gbrain" 2>/dev/null || true
+  if /data/.gbrain/start-autopilot.sh >>"$LOGFILE" 2>&1; then
+    log "gbrain autopilot started"
+  else
+    log "gbrain autopilot failed to start (non-fatal, continuing)"
+  fi
+else
+  log "gbrain autopilot: no /data/.gbrain/start-autopilot.sh, skipping"
+fi
+
 while :; do
   rotate_log
   start_ts=$(date +%s)
