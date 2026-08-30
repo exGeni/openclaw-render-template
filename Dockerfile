@@ -13,6 +13,8 @@ RUN printf '#!/bin/sh\nexec /app/node_modules/.bin/openclaw "$@"\n' > /usr/bin/o
  && printf '#!/bin/sh\nexec /app/node_modules/.bin/alphaclaw "$@"\n' > /usr/bin/alphaclaw \
  && printf '#!/bin/sh\nexec /usr/local/bin/claude "$@"\n' > /usr/bin/claude \
  && chmod +x /usr/bin/openclaw /usr/bin/alphaclaw /usr/bin/claude \
+ && printf '#!/bin/sh\n# gbrain lives on the persistent /data volume, but the embedded Codex agent\n# runs with a sanitized PATH that only contains image directories — so the\n# entry point has to be baked into the image, not created at runtime.\n# Prepend the volume bin dir so the bun runtime the CLI needs is found too.\nexport PATH="/data/.openclaw/bin:$PATH"\nexec /data/.openclaw/bin/gbrain "$@"\n' > /usr/local/bin/gbrain \
+ && chmod +x /usr/local/bin/gbrain \
  && ln -sf /app/node_modules/.bin/openclaw /usr/local/bin/openclaw \
  && ln -sf /app/node_modules/.bin/alphaclaw /usr/local/bin/alphaclaw \
  && /usr/bin/openclaw --version \
