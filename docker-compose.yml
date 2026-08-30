@@ -9,5 +9,34 @@ services:
       # Persistent data survives container restarts (like Render disks)
       - openclaw-data:/data
 
+  # Infrastructure sibling for gbrain. Not part of the Render deploy path
+  # (render.yaml is a single web service); this runs alongside openclaw only
+  # under Compose. The openclaw service above is deliberately untouched — the
+  # two reach each other over the project's default network by service name.
+  gbrain-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: gbrain-postgres
+    restart: unless-stopped
+    # POSTGRES_PASSWORD lives here only. Never in this file, git, or the image.
+    # See .env.gbrain-postgres.example.
+    env_file: .env.gbrain-postgres
+    environment:
+      POSTGRES_DB: gbrain
+      POSTGRES_USER: gbrain
+    volumes:
+      - gbrain-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gbrain -d gbrain"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    # Host-side maintenance access, loopback only. Off by default: gbrain
+    # reaches the DB over the Docker network, so nothing needs a host port.
+    # ports:
+    #   - "127.0.0.1:5434:5432"
+
 volumes:
   openclaw-data:
+  gbrain-pgdata:
+    name: gbrain-pgdata
