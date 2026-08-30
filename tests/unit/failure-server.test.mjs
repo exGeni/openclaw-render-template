@@ -73,6 +73,17 @@ test("/ serves the human-readable failure page", async () => {
   assert.match(body, /AlphaClaw failed to start/);
 });
 
+test("page offers the Restart escape hatch instead of manual-start advice", async () => {
+  const body = await (await fetch(`${BASE}/`)).text();
+  // The way out: a real form POSTing to /restart.
+  assert.match(body, /action="\/restart"/);
+  assert.match(body, /Restart AlphaClaw/);
+  // The dangerous advice is gone: on a box with a pending rollback marker,
+  // running alphaclaw by hand replays the rollback and can wedge the install.
+  assert.doesNotMatch(body, /node_modules\/\.bin\/alphaclaw start/);
+  assert.match(body, /openclaw-rollback-pending\.json/);
+});
+
 test("unknown paths fall through to the failure page (catch-all)", async () => {
   const res = await fetch(`${BASE}/some/random/path`);
   assert.equal(res.status, 200);
