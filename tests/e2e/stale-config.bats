@@ -191,3 +191,15 @@ teardown_file() {
   ! grep -qF "$STALE_PATH" <<<"$output"
   ! grep -qiF "plugin path not found" <<<"$output"
 }
+
+# Keep this LAST: it stops the onboarded container — the one with a LIVE
+# gateway in its process tree, so TERM teardown is proven against real
+# children, not just an idle setup server.
+@test "TERM stops the gateway-running container promptly (tini -g)" {
+  START=$(date +%s)
+  docker stop -t 15 "$C_ONB"
+  DUR=$(( $(date +%s) - START ))
+  [ "$DUR" -lt 14 ]
+  EC=$(docker inspect -f '{{.State.ExitCode}}' "$C_ONB")
+  [ "$EC" != "137" ]
+}

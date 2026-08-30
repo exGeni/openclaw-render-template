@@ -114,3 +114,16 @@ in_container() {
   [ "$CODE" = "200" ]
   ! grep -q "$SENTINEL" "$BODY"
 }
+
+# Keep this LAST: it stops the shared container.
+@test "TERM stops the container promptly (tini -g reaches every process)" {
+  # With tini -g, a TERM to PID 1 hits the whole process group directly. If
+  # any process ignored it, docker would SIGKILL at t=15 and the container's
+  # exit code would be 137 — so fast stop + non-137 proves teardown.
+  START=$(date +%s)
+  docker stop -t 15 "$CONTAINER"
+  DUR=$(( $(date +%s) - START ))
+  [ "$DUR" -lt 14 ]
+  EC=$(docker inspect -f '{{.State.ExitCode}}' "$CONTAINER")
+  [ "$EC" != "137" ]
+}
