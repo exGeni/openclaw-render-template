@@ -7,7 +7,7 @@ run. All test files live here and are excluded from the image via `.dockerignore
 | Layer        | What it checks                                                                 | Needs            | Command               |
 |--------------|--------------------------------------------------------------------------------|------------------|-----------------------|
 | **unit**     | `failure-server.js` routing + the "no secret leaks" property                   | node             | `npm run test:unit`   |
-| **contract** | Static invariants in `start.sh` / `debug-start.sh` / `Dockerfile` / `render.yaml` (the "don't remove" items in `CLAUDE.md`) | bash, `shellcheck`, `bats` | `npm run test:contract` |
+| **contract** | Static invariants in `start.sh` / `debug-start.sh` / `Dockerfile` / `render.yaml` (the "don't remove" items in `CLAUDE.md`) **plus the supervise harness** — the real `start.sh` run on the host with a stub alphaclaw | bash, `shellcheck`, `bats`, node | `npm run test:contract` |
 | **e2e**      | Builds the image, runs it with an empty `/data` (like Render's disk), asserts it stays Live and every documented invariant holds at runtime | docker, `bats`, curl | `npm run test:e2e`    |
 
 ```sh
@@ -26,7 +26,17 @@ npm run test:all  # everything
   the container: the `PATH` prepend (alphaclaw spawns `openclaw` by bare name),
   the `TMPDIR=/data/tmp` routing, the sticky-bit `mkdir` on boot, the tini/CMD
   wiring, and the "never touch bare `/tmp`" rule.
-- **e2e** has two suites:
+- **Contract's supervise harness** (`supervise.bats`) drives the real `start.sh`
+  through its env knobs with a scenario-driven stub alphaclaw and a stub
+  failure server: exit-75 immediate relaunch (+ spin brake and loop WARNING),
+  the >window reset heuristic, backoff + the 5-failure threshold, cumulative
+  backoff cap, `FAILURE_EPOCH` persistence/clearing, log rotation, the orphan
+  sweep (via a tagged pattern so it can never touch real host processes), and
+  numeric env validation. `tests/unit/failure-server-restart.test.mjs` covers
+  the failure server's escape hatches: `POST /restart` exit (+ 429 dedupe,
+  client-abort), the health-grace 200→503 flip, epoch anchoring, and
+  EADDRINUSE bind retry.
+- **e2e** has three suites:
   - `docker.bats` mounts a **tmpfs over `/data`** so the dir starts empty at
     runtime, reproducing how Render's disk mount shadows the Dockerfile's
     build-time `mkdir`. If `/data/tmp` exists with its sticky bit afterwards,
@@ -41,7 +51,13 @@ npm run test:all  # everything
     `openclaw onboard` writes) — the logs show **`[gateway] ready`** with the
     usage-tracker plugin actually loaded. Covers **both** onboarded and
     not-onboarded `/data`, because the prune must run on every boot (in
-    `bin/alphaclaw.js`), not only the onboarded boot sequence.
+    `bin/alphaclaw.js`), not only the onboarded boot sequence. Its final test
+    stops the gateway-running container and asserts TERM teardown is prompt.
+  - `supervise-e2e.bats` proves the supervisor through the real container
+    wiring: `ALPHACLAW_BIN=/bin/false` drives 5 rapid failures onto the
+    failure page (Restart button present), `POST /restart` relaunches
+    alphaclaw, `/health` flips to 503 on the epoch-anchored schedule, and a
+    mounted exit-75 stub shows immediate relaunches with no failure page.
 
 ## Local prerequisites
 

@@ -201,6 +201,16 @@ First time you DM the bot, it sends a pairing request. Approve it in the setup U
 
 The channel's env var is empty or missing. Go to the Envars tab, add the token, and save. The channel will be automatically enabled in the config.
 
+### If alphaclaw keeps crashing at boot
+
+`start.sh` supervises `alphaclaw start`: intentional restarts (exit 75, or any exit after a run longer than 60s) relaunch immediately, and rapid crash-loops back off briefly. After 5 rapid failures in a row you get a **failure-status page** at the service URL with a **Restart AlphaClaw** button; the deploy stays Live so the Render Shell tab remains reachable. The supervisor writes every exit code, run duration, and decision to `/data/start.log` — read that first:
+
+```sh
+cat /data/start.log
+```
+
+If nobody intervenes, `/health` flips to 503 after ~5 minutes so Render restarts the container automatically. Before running anything by hand, check for a pending rollback marker — `ls /data/.openclaw/.alphaclaw/openclaw-rollback-pending.json` — a manual `alphaclaw start` replays a pending rollback and can wedge the install; prefer the Restart button.
+
 ### Container crash-looping (debug mode)
 
 If the container won't stay up long enough to use the Render **Shell** tab, swap the Dockerfile `CMD` to use the bundled `debug-start.sh` script:
@@ -227,7 +237,7 @@ ls /app/node_modules/.bin | grep -i claw
 alphaclaw start                   # reproduce the failure with full stdout
 ```
 
-When you've identified and shipped the fix, restore `CMD ["alphaclaw", "start"]` in the Dockerfile.
+When you've identified and shipped the fix, restore `CMD ["/start.sh"]` in the Dockerfile.
 
 ## Links
 

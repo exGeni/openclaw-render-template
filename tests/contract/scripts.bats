@@ -55,12 +55,37 @@ setup() {
   done < <(grep -nw '/tmp' "$REPO/start.sh")
 }
 
-# --- Resilience: fall back to the failure server, don't crash-loop ------------
+# --- Resilience: supervise loop, not one-shot + dead-end fallback -------------
 
-@test "start.sh: runs 'alphaclaw start' as the primary process" {
-  grep -q 'alphaclaw start' "$REPO/start.sh"
+@test "start.sh: runs alphaclaw via \$ALPHACLAW_BIN with the standard default" {
+  grep -q '"\$ALPHACLAW_BIN" start' "$REPO/start.sh"
+  grep -q 'ALPHACLAW_BIN="\${ALPHACLAW_BIN:-/app/node_modules/\.bin/alphaclaw}"' "$REPO/start.sh"
 }
 
-@test "start.sh: execs the failure server when alphaclaw exits" {
-  grep -q 'exec node /failure-server.js' "$REPO/start.sh"
+@test "start.sh: preserves the PIPESTATUS-through-tee exit-code pattern" {
+  grep -q 'CODE=\${PIPESTATUS\[0\]}' "$REPO/start.sh"
+}
+
+@test "start.sh: honors the exit-75 intentional-restart contract" {
+  grep -Eq '\-eq 75' "$REPO/start.sh"
+}
+
+@test "start.sh: supervises the failure server as a loop child (never exec)" {
+  grep -q '"\$NODE_BIN" "\$FAILURE_SERVER"' "$REPO/start.sh"
+  ! grep -q 'exec node' "$REPO/start.sh"
+}
+
+@test "start.sh: ships the documented policy defaults (60s window, 5 fails, 5s step)" {
+  grep -q 'RAPID_WINDOW_SECS="\${RAPID_WINDOW_SECS:-60}"' "$REPO/start.sh"
+  grep -q 'MAX_RAPID_FAILS="\${MAX_RAPID_FAILS:-5}"' "$REPO/start.sh"
+  grep -q 'BACKOFF_STEP_SECS="\${BACKOFF_STEP_SECS:-5}"' "$REPO/start.sh"
+}
+
+@test "start.sh: anchors the failure server's grace clock with FAILURE_EPOCH" {
+  grep -q 'FAILURE_EPOCH="\$FAILURE_EPOCH" "\$NODE_BIN" "\$FAILURE_SERVER"' "$REPO/start.sh"
+}
+
+@test "start.sh: rotates an oversized boot log" {
+  grep -q 'MAX_LOG_BYTES' "$REPO/start.sh"
+  grep -q "\.1" "$REPO/start.sh"
 }
