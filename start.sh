@@ -74,7 +74,8 @@ export PATH="/app/node_modules/.bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/us
 # trio too (same belt-and-suspenders reasoning as PATH above: Render's runtime
 # can munge the env even though the Dockerfile sets these via ENV).
 export TMPDIR=/data/tmp TEMP=/data/tmp TMP=/data/tmp
-mkdir -p "$TMPDIR" 2>/dev/null && chmod 1777 "$TMPDIR" 2>/dev/null || true
+mkdir -p "$TMPDIR" 2>/dev/null || true
+chmod 1777 "$TMPDIR" 2>/dev/null || true
 
 {
   echo "=== boot $(date -u +%FT%TZ) ==="
