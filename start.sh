@@ -146,6 +146,48 @@ else
   log "gbrain autopilot: no /data/.gbrain/start-autopilot.sh, skipping"
 fi
 
+# gbrain HTTP serve on loopback. gbrain does NOT generate a start script for
+# this the way it does for autopilot — upstream treats the serve lifecycle as
+# the deployer's job (docs/mcp/DEPLOY.md shows `docker run ... gbrain serve
+# --http`; docs/guides/minions-deployment points at systemd/supervisor). This
+# boot path is our deployer.
+#
+# It exists because `gbrain bootstrap harness` health-gates on
+# 127.0.0.1:3131/health BEFORE consent, mint, receipt and wiring — without a
+# live serve the documented harness install cannot start at all.
+#
+# Same placement reasoning as autopilot above: OUTSIDE the supervisor loop, so
+# one serve outlives an alphaclaw restart instead of one spawning per relaunch.
+#
+# Loopback only, deliberately. The operator door is already AlphaClaw's /v1;
+# a second externally-reachable surface onto the brain is not wanted.
+#
+# Non-fatal in every branch: a brain that will not serve must never stop
+# alphaclaw from booting.
+GBRAIN_SERVE_PORT="${GBRAIN_SERVE_PORT:-3131}"
+if [ -x /data/.openclaw/bin/gbrain ]; then
+  if curl -fsS -m 2 "http://127.0.0.1:${GBRAIN_SERVE_PORT}/health" >/dev/null 2>&1; then
+    log "gbrain serve: already listening on ${GBRAIN_SERVE_PORT}, not starting a second one"
+  else
+    # HOME=/data so it reads the persistent /data/.gbrain/config.json (engine +
+    # database_url). /data/.env is AlphaClaw's persistent env store; provider
+    # keys live there, and the serve needs them for embedding-backed queries.
+    mkdir -p "$HOME/.gbrain" 2>/dev/null || true
+    (
+      set -a
+      [ -r /data/.env ] && . /data/.env
+      set +a
+      HOME=/data nohup /data/.openclaw/bin/gbrain serve --http \
+        --port "$GBRAIN_SERVE_PORT" \
+        >>/data/.gbrain/serve.log 2>&1 &
+      echo $! > /data/.gbrain/serve.pid
+    ) 2>/dev/null || true
+    log "gbrain serve: launched on 127.0.0.1:${GBRAIN_SERVE_PORT} (log /data/.gbrain/serve.log)"
+  fi
+else
+  log "gbrain serve: no /data/.openclaw/bin/gbrain, skipping"
+fi
+
 while :; do
   rotate_log
   start_ts=$(date +%s)
