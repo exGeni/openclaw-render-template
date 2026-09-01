@@ -222,6 +222,11 @@ STUB
   # rescue sessions depend on; re-adoption itself is alphaclaw behavior,
   # verified post-deploy, not here.
   command -v tmux >/dev/null || skip "tmux not installed on host"
+  # The stub runs INSIDE the supervisor, which exports the container PATH —
+  # a Homebrew tmux (/opt/homebrew/bin) isn't on it and would fail silently
+  # (the >/dev/null redirect eats "command not found"), so bake the absolute
+  # path in at stub-generation time. Same pattern as NODE_BIN.
+  TMUX_BIN="$(command -v tmux)"
   SOCK="$T/rescue.sock"
   make_tagged_sleeper "$TAG-decoy.sh"
   cat >"$T/stub-alphaclaw" <<STUB
@@ -230,8 +235,8 @@ n=\$(cat "\$STUB_DIR/count" 2>/dev/null || echo 0); n=\$((n+1)); echo "\$n" >"\$
 if [ "\$n" -eq 1 ]; then
   nohup bash "$T/$TAG-decoy.sh" >/dev/null 2>&1 &
   # tmux daemonizes: detach it from bats' fds or the file hangs on fd3/stdout.
-  tmux -S "$SOCK" new-session -d -s alphaclaw-rescue 'exec sleep 300' </dev/null >/dev/null 2>&1 3>&-
-  tmux -S "$SOCK" list-panes -t alphaclaw-rescue -F '#{pane_pid}' >"\$STUB_DIR/pane-pid"
+  "$TMUX_BIN" -S "$SOCK" new-session -d -s alphaclaw-rescue 'exec sleep 300' </dev/null >/dev/null 2>&1 3>&-
+  "$TMUX_BIN" -S "$SOCK" list-panes -t alphaclaw-rescue -F '#{pane_pid}' >"\$STUB_DIR/pane-pid"
   exit 75
 fi
 sleep 300 &
