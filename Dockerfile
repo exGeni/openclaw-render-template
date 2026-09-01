@@ -15,6 +15,8 @@ RUN printf '#!/bin/sh\nexec /app/node_modules/.bin/openclaw "$@"\n' > /usr/bin/o
  && chmod +x /usr/bin/openclaw /usr/bin/alphaclaw /usr/bin/claude \
  && printf '#!/bin/sh\n# gbrain lives on the persistent /data volume, but the embedded Codex agent\n# runs with a sanitized PATH that only contains image directories — so the\n# entry point has to be baked into the image, not created at runtime.\n# Prepend the volume bin dir so the bun runtime the CLI needs is found too.\nexport PATH="/data/.openclaw/bin:$PATH"\nexec /data/.openclaw/bin/gbrain "$@"\n' > /usr/local/bin/gbrain \
  && chmod +x /usr/local/bin/gbrain \
+ && printf '#!/bin/sh\n# Same reasoning as the gbrain entry point above, for the runtime it needs.\n# gbrain bootstrap harness installs Claude Code hooks whose shebang resolves\n# bun through env; Claude Code hook processes do NOT inherit OpenClaw config\n# such as tools.exec.pathPrepend, so bun has to be findable on a plain PATH.\n# Measured: every SessionEnd hook failed with "env: bun: No such file or\n# directory" while /data/.openclaw/bin/bun existed the whole time.\nexec /data/.openclaw/bin/bun "$@"\n' > /usr/local/bin/bun \
+ && chmod +x /usr/local/bin/bun \
  && ln -sf /app/node_modules/.bin/openclaw /usr/local/bin/openclaw \
  && ln -sf /app/node_modules/.bin/alphaclaw /usr/local/bin/alphaclaw \
  && /usr/bin/openclaw --version \
