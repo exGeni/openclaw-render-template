@@ -36,7 +36,69 @@ services:
     # ports:
     #   - "127.0.0.1:5434:5432"
 
+  # Durable HTTP MCP endpoint for the brain.
+  #
+  # Shape is upstream's: gbrain docs/mcp/DEPLOY.md "Co-located Docker
+  # workloads" puts the brain's Postgres and `gbrain serve` together on one
+  # user-defined network, and has every other workload reach the brain over
+  # OAuth against serve rather than over a database connection.
+  #
+  # Why a service and not a process inside the openclaw container: serve had
+  # been an ad-hoc child of whichever agent session started it, so it died
+  # with that session. Every OAuth-scoped client points at this endpoint, so
+  # its lifetime has to be the stack's, not a session's.
+  #
+  # Runs the SAME gbrain source tree the openclaw container runs, mounted
+  # read-only from its volume, so the two can never drift to different
+  # versions. HOME is a separate small volume because the read-only mount
+  # leaves serve nowhere to write its own config.
+  gbrain-serve:
+    image: node:22-slim
+    container_name: gbrain-serve
+    restart: unless-stopped
+    depends_on:
+      gbrain-postgres:
+        condition: service_healthy
+    env_file: .env.gbrain-postgres
+    environment:
+      HOME: /gbrain-home
+    volumes:
+      - openclaw-data:/data:ro
+      - gbrain-serve-home:/gbrain-home
+    # Loopback only. Tenant containers reach the brain through the host
+    # gateway, never by joining the brain's network — DEPLOY.md operator
+    # checklist, "Untrusted agents reach the brain via OAuth/Bearer against
+    # serve --http only (host loopback ... never gbrain-net)".
+    #
+    # 3132 on the host, not 3131: the operator's own host-side gbrain serve
+    # already owns 127.0.0.1:3131 and answers for a DIFFERENT brain. Binding
+    # both to one port would either fail to start or, worse, hand a tenant
+    # the wrong brain. Services inside this project reach this one by name
+    # (gbrain-serve:3131) and never touch the host port at all.
+    ports:
+      - "127.0.0.1:3132:3131"
+    # The connection string is assembled INSIDE the container, from the
+    # password env_file hands it. `$$` keeps Compose from interpolating —
+    # Compose only reads `.env` for `${...}`, never an env_file, so a
+    # Compose-side `${POSTGRES_PASSWORD}` would silently expand to empty and
+    # the URL would carry a blank password. The value never enters the
+    # Compose config, so it stays out of `docker compose config` output too.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        export GBRAIN_DATABASE_URL="postgresql://gbrain:$$POSTGRES_PASSWORD@gbrain-postgres:5432/gbrain";
+        exec /data/.openclaw/bin/bun
+        /data/.openclaw/install/global/node_modules/gbrain/src/cli.ts
+        serve --http --port 3131 --bind 0.0.0.0
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3131/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 volumes:
   openclaw-data:
+  gbrain-serve-home:
   gbrain-pgdata:
     name: gbrain-pgdata
