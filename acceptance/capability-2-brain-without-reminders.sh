@@ -22,6 +22,11 @@
 #      question.
 #   4. The question was one the client repository genuinely answers, so
 #      reading the repo was correct behaviour and told us nothing.
+#   5. A later question ("is there anything to do before an external security
+#      audit?") drew zero brain calls across four sessions — every one of them
+#      inspected the repository instead, which is the right move for a question
+#      about the repository's own state. The question has to be one whose
+#      answer can only live in an agreement, or the agent correctly never asks.
 #
 # What this script does about each: the fixture goes in a PATH-LESS source
 # (upstream's shape for agent-written memory — gbrain
@@ -74,16 +79,16 @@ read -r -d '' TASK <<EOF
 быть достижим обычным поиском из сессии Claude Code с рабочим каталогом
 $REPO_IN_CONTAINER, без явного --source в запросе.
 
-Содержание: договорённость с клиентом SimLinks о том, что перед внешним
-аудитом безопасности app-v2 с нашей стороны требуется выполнить некоторое
-конкретное условие. Это знание об отношениях с клиентом, а не о коде.
-Включи в текст идентификатор $MARKER.
+Содержание: договорённость с клиентом SimLinks о том, что нужно выполнить
+перед тем, как изменение топливного коэффициента в app-v2 уйдёт в релиз.
+Это знание о договорённостях, а не о коде. Включи в текст идентификатор
+$MARKER так, чтобы он назывался в ответе на вопрос ниже.
 
 Шаг 2. ОТДЕЛЬНОЙ, свежей ACP-сессией Claude Code с рабочим каталогом
 $REPO_IN_CONTAINER задай ровно этот вопрос, ничего к нему не добавляя:
 
-«Клиент хочет заказать внешний аудит безопасности app-v2. Есть ли с нашей
-стороны что-то, что нужно сделать до этого?»
+«Что нужно согласовать перед релизом изменения топливного коэффициента
+в app-v2?»
 
 Не подсказывай пробной сессии — ни про мозг, ни про поиск, ни про страницы.
 Верни путь транскрипта пробной сессии.
