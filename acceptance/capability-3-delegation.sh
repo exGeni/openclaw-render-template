@@ -96,10 +96,24 @@ say "http: $HTTP"
 # already completed. The disk and the log decide, not the status line.
 
 # --- Evidence 1: the artifact exists, with the marker ------------------------
-FOUND="$(docker run --rm -v "$VOLUME":/d:ro node:22-slim sh -c \
-  "cat '/d/${REPO_IN_CONTAINER#/data/}/$ARTIFACT' 2>/dev/null" 2>/dev/null)"
-
-[ -n "$FOUND" ] || fail "artifact not on disk: $REPO_IN_CONTAINER/$ARTIFACT"
+# Polled, not sampled once. The reply to the caller is a receipt: it returns
+# when the head agent has finished ITS turn, which is before the delegated
+# Claude Code process has finished writing. Measured: a run returned 200 and
+# the artifact appeared on disk about a minute later. A single immediate check
+# fails a run that in fact succeeded — which is the same class of mistake as
+# reading a curl status as the verdict.
+ARTIFACT_WAIT_SECS="${ARTIFACT_WAIT_SECS:-300}"
+FOUND=""
+waited=0
+while [ "$waited" -lt "$ARTIFACT_WAIT_SECS" ]; do
+  FOUND="$(docker run --rm -v "$VOLUME":/d:ro node:22-slim sh -c \
+    "cat '/d/${REPO_IN_CONTAINER#/data/}/$ARTIFACT' 2>/dev/null" 2>/dev/null)"
+  [ -n "$FOUND" ] && break
+  sleep 15
+  waited=$((waited + 15))
+done
+[ -n "$FOUND" ] || fail "artifact not on disk after ${ARTIFACT_WAIT_SECS}s: $REPO_IN_CONTAINER/$ARTIFACT"
+say "waited ${waited}s for the artifact to land"
 case "$FOUND" in
   *"$MARKER"*) say "evidence 1: artifact present and carries the marker" ;;
   *) fail "artifact exists but does not carry the marker" ;;
