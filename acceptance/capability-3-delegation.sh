@@ -59,7 +59,9 @@ ARTIFACT="acceptance/${MARKER}.md"
 say "marker:   $MARKER"
 say "artifact: $REPO_IN_CONTAINER/$ARTIFACT"
 
-LOGPOS="$(docker logs "$CONTAINER" 2>&1 | wc -l)"
+# Taken before dispatch so evidence 2 can tell this run's ACP sessions from
+# every earlier one on the volume.
+DISPATCH_EPOCH="$(date +%s)"
 
 # --- The task ----------------------------------------------------------------
 # Phrased as work, not as a test. It names the destination repository because a
@@ -123,11 +125,40 @@ LINES="$(printf '%s\n' "$FOUND" | grep -c .)"
 [ "$LINES" -ge 3 ] || fail "artifact has $LINES non-empty lines, expected at least 3 (marker, source path, branch)"
 
 # --- Evidence 2: the work was delegated, not done in the head agent ----------
-NEW_LOG="$(docker logs "$CONTAINER" 2>&1 | tail -n +"$LOGPOS")"
-if printf '%s' "$NEW_LOG" | grep -qE "acpx|runtime=subagent|runtime=cli"; then
-  say "evidence 2: gateway recorded a delegated runtime during the run"
+# The ACP session record, not the gateway log. The log looked like the obvious
+# place and is not: `runtime=subagent` / `runtime=cli` appear only inside the
+# restart-deferral diagnostic, which prints only while a restart is pending,
+# and `acpx` appears when the plugin registers at gateway start. Neither is a
+# per-run marker, so a delegated run with no restart pending produced no
+# matching line and failed a capability that had held.
+#
+# Every ACP session leaves a durable record under the workspace state dir,
+# named agent:claude:acp:<id>:oneshot:<id> (percent-encoded) and carrying the
+# cwd it ran in. A new one in the client repo IS the delegation.
+# Parsed, not pattern-matched: the record is pretty-printed JSON
+# (`"cwd": "/data/simlinks"`), and a grep written without the space silently
+# counted zero and failed a run that had delegated correctly.
+ACP_COUNT="$(docker run --rm -v "$VOLUME":/d:ro -e WANT_CWD="$REPO_IN_CONTAINER" \
+  -e SINCE="$DISPATCH_EPOCH" node:22-slim node -e '
+  const fs = require("fs"), path = require("path");
+  const dir = "/d/.openclaw/workspace/state/sessions";
+  const since = Number(process.env.SINCE) * 1000;
+  let n = 0;
+  for (const f of fs.readdirSync(dir)) {
+    if (!f.startsWith("agent%3Aclaude%3Aacp%3A")) continue;
+    const p = path.join(dir, f);
+    if (fs.statSync(p).mtimeMs < since) continue;
+    try {
+      if (JSON.parse(fs.readFileSync(p, "utf8")).cwd === process.env.WANT_CWD) n++;
+    } catch {}
+  }
+  console.log(n);
+' 2>/dev/null)"
+
+if [ "${ACP_COUNT:-0}" -gt 0 ]; then
+  say "evidence 2: $ACP_COUNT ACP session(s) opened in $REPO_IN_CONTAINER during the run"
 else
-  fail "no delegated runtime in the gateway log for this run — the head agent may have done it itself"
+  fail "no ACP session recorded in $REPO_IN_CONTAINER for this run — the head agent may have done it itself"
 fi
 
 say ""
