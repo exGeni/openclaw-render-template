@@ -62,6 +62,19 @@ services:
     env_file: .env.gbrain-postgres
     environment:
       HOME: /gbrain-home
+      # This server is a "stateless host" in gbrain's sense: its HOME is a
+      # fresh volume with no config.json, so embedding_model and
+      # embedding_dimensions cannot resolve from the file plane and have to
+      # come from the environment. The server says so itself at startup, and
+      # without them it answers "vector search unavailable (missing_env)" and
+      # degrades every caller to keyword-only — which reads as an agent that
+      # ignores the brain rather than a server that cannot embed a query.
+      #
+      # These MUST match the brain's own schema
+      # (/data/.gbrain/config.json in the openclaw volume). A mismatch does
+      # not fail loudly; it writes vectors the existing index cannot use.
+      GBRAIN_EMBEDDING_MODEL: voyage:voyage-4-large
+      GBRAIN_EMBEDDING_DIMENSIONS: "1024"
     volumes:
       - openclaw-data:/data:ro
       - gbrain-serve-home:/gbrain-home
@@ -83,10 +96,19 @@ services:
     # Compose-side `${POSTGRES_PASSWORD}` would silently expand to empty and
     # the URL would carry a blank password. The value never enters the
     # Compose config, so it stays out of `docker compose config` output too.
+    # The embedding key is read out of the volume at start, never through
+    # Compose and never into a log. Without it the server answers
+    # "vector search unavailable (missing_env)" and silently degrades every
+    # client to keyword-only retrieval — which looks like an agent that
+    # ignores the brain rather than a server that cannot embed a query.
+    # Measured: a probe agent searched the brain eight times unprompted and
+    # surfaced nothing, purely because of this.
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >
         export GBRAIN_DATABASE_URL="postgresql://gbrain:$$POSTGRES_PASSWORD@gbrain-postgres:5432/gbrain";
+        VOYAGE_API_KEY=$$(sed -n 's/^VOYAGE_API_KEY=//p' /data/.env | head -1);
+        export VOYAGE_API_KEY;
         exec /data/.openclaw/bin/bun
         /data/.openclaw/install/global/node_modules/gbrain/src/cli.ts
         serve --http --port 3131 --bind 0.0.0.0
