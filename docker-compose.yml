@@ -48,12 +48,13 @@ services:
   # with that session. Every OAuth-scoped client points at this endpoint, so
   # its lifetime has to be the stack's, not a session's.
   #
-  # Runs the SAME gbrain source tree the openclaw container runs, mounted
-  # read-only from its volume, so the two can never drift to different
-  # versions. HOME is a separate small volume because the read-only mount
-  # leaves serve nowhere to write its own config.
+  # Image-owned runtime: gbrain-serve/Dockerfile installs gbrain exactly as
+  # INSTALL_FOR_AGENTS.md Step 1 prescribes, pinned by commit. The openclaw
+  # volume is still mounted read-only only so the embedding key can be read
+  # from /data/.env; HOME is a separate small volume for serve's own state.
   gbrain-serve:
-    image: node:22-slim
+    build: ./gbrain-serve
+    image: openclaw-stack-gbrain-serve
     container_name: gbrain-serve
     restart: unless-stopped
     depends_on:
@@ -109,9 +110,7 @@ services:
         export GBRAIN_DATABASE_URL="postgresql://gbrain:$$POSTGRES_PASSWORD@gbrain-postgres:5432/gbrain";
         VOYAGE_API_KEY=$$(sed -n 's/^VOYAGE_API_KEY=//p' /data/.env | head -1);
         export VOYAGE_API_KEY;
-        exec /data/.openclaw/bin/bun
-        /data/.openclaw/install/global/node_modules/gbrain/src/cli.ts
-        serve --http --port 3131 --bind 0.0.0.0
+        exec /usr/bin/tini -- gbrain serve --http --port 3131 --bind 0.0.0.0
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3131/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 15s
