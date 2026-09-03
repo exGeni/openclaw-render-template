@@ -1,6 +1,6 @@
 FROM node:22-slim
 
-RUN apt-get update && apt-get install -y git curl procps python3 make g++ cron tini vim screen tmux && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y git curl procps python3 make g++ cron tini vim screen tmux unzip && rm -rf /var/lib/apt/lists/*
 
 # Pinned exactly, same discipline as the alphaclaw SHA pin: an unpinned
 # install floats to latest whenever an earlier layer changes, silently
@@ -16,14 +16,25 @@ RUN printf '#!/bin/sh\nexec /app/node_modules/.bin/openclaw "$@"\n' > /usr/bin/o
  && printf '#!/bin/sh\nexec /app/node_modules/.bin/alphaclaw "$@"\n' > /usr/bin/alphaclaw \
  && printf '#!/bin/sh\nexec /usr/local/bin/claude "$@"\n' > /usr/bin/claude \
  && chmod +x /usr/bin/openclaw /usr/bin/alphaclaw /usr/bin/claude \
- && printf '#!/bin/sh\n# gbrain lives on the persistent /data volume, but the embedded Codex agent\n# runs with a sanitized PATH that only contains image directories — so the\n# entry point has to be baked into the image, not created at runtime.\n# Prepend the volume bin dir so the bun runtime the CLI needs is found too.\nexport PATH="/data/.openclaw/bin:$PATH"\nexec /data/.openclaw/bin/gbrain "$@"\n' > /usr/local/bin/gbrain \
- && chmod +x /usr/local/bin/gbrain \
- && printf '#!/bin/sh\n# Same reasoning as the gbrain entry point above, for the runtime it needs.\n# gbrain bootstrap harness installs Claude Code hooks whose shebang resolves\n# bun through env; Claude Code hook processes do NOT inherit OpenClaw config\n# such as tools.exec.pathPrepend, so bun has to be findable on a plain PATH.\n# Measured: every SessionEnd hook failed with "env: bun: No such file or\n# directory" while /data/.openclaw/bin/bun existed the whole time.\nexec /data/.openclaw/bin/bun "$@"\n' > /usr/local/bin/bun \
- && chmod +x /usr/local/bin/bun \
  && ln -sf /app/node_modules/.bin/openclaw /usr/local/bin/openclaw \
  && ln -sf /app/node_modules/.bin/alphaclaw /usr/local/bin/alphaclaw \
  && /usr/bin/openclaw --version \
  && /usr/bin/claude --version
+
+# gbrain CLI, installed exactly as INSTALL_FOR_AGENTS.md "Step 1: Install GBrain"
+# prescribes (bun, then `bun install -g github:garrytan/gbrain#<ref>`; the npm
+# registry is forbidden there). Image-owned so it is reproduced by the build on
+# every recreate and on the server, never by writes into the volume. Pinned by
+# commit to the same ref as gbrain-serve/Dockerfile so the two cannot drift.
+# GBRAIN_HOME moves gbrain's own config/state onto the persistent volume: HOME is
+# /root here and does not survive a recreate (docs/mcp/OPENCLAW.md names
+# GBRAIN_HOME as the knob "when the brain home isn't ~/.gbrain").
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/root/.bun/bin:$PATH"
+ARG GBRAIN_REF=5cfb84f1d
+RUN bun install -g "github:garrytan/gbrain#${GBRAIN_REF}" && gbrain --version \
+ && ln -sf /root/.bun/bin/gbrain /usr/local/bin/gbrain && ln -sf /root/.bun/bin/bun /usr/local/bin/bun
+ENV GBRAIN_HOME=/data/.gbrain
 
 COPY start.sh /start.sh
 COPY failure-server.js /failure-server.js
