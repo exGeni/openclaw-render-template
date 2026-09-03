@@ -93,7 +93,11 @@ services:
       GBRAIN_EMBEDDING_MODEL: voyage:voyage-4-large
       GBRAIN_EMBEDDING_DIMENSIONS: "1024"
     volumes:
-      - openclaw-data:/data:ro
+      # Read-write: the brain's `workspace` source has local_path
+      # /data/.openclaw/brain, and the server writes a page's markdown into
+      # its source's local_path (put_page failed with EROFS while this was
+      # :ro). The embedding key is also read from /data/.env at start.
+      - openclaw-data:/data
       - gbrain-serve-home:/gbrain-home
     # No ports here: a service in another container's network namespace
     # cannot publish its own; the host mapping lives on the openclaw service.
