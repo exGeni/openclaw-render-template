@@ -4,6 +4,10 @@ services:
     restart: unless-stopped
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
+      # gbrain-serve shares this container's network namespace (see that
+      # service), so the brain's 3131 is published from here. Loopback only,
+      # and 3132 because 3131 on the host belongs to the operator's own brain.
+      - "127.0.0.1:3132:3131"
     env_file: .env
     volumes:
       # Persistent data survives container restarts (like Render disks)
@@ -57,7 +61,19 @@ services:
     image: openclaw-stack-gbrain-serve
     container_name: gbrain-serve
     restart: unless-stopped
+    # Shares the openclaw container's network namespace. gbrain's OAuth issuer
+    # must be HTTPS or localhost — serve exits with "Issuer URL must be HTTPS"
+    # for any other --public-url, and without one it advertises
+    # http://localhost:3131 — so the only way a plain-HTTP, no-hostname
+    # deployment can complete the client-credentials flow is for "localhost"
+    # to be TRUE for the caller. Inside openclaw the brain is therefore
+    # http://localhost:3131: the URL the thin client (`gbrain init --mcp-only`)
+    # and OpenClaw's mcp.servers entry both use. Postgres is still reached by
+    # service name over the project network openclaw is attached to.
+    network_mode: "service:openclaw"
     depends_on:
+      openclaw:
+        condition: service_started
       gbrain-postgres:
         condition: service_healthy
     env_file: .env.gbrain-postgres
@@ -79,18 +95,8 @@ services:
     volumes:
       - openclaw-data:/data:ro
       - gbrain-serve-home:/gbrain-home
-    # Loopback only. Tenant containers reach the brain through the host
-    # gateway, never by joining the brain's network — DEPLOY.md operator
-    # checklist, "Untrusted agents reach the brain via OAuth/Bearer against
-    # serve --http only (host loopback ... never gbrain-net)".
-    #
-    # 3132 on the host, not 3131: the operator's own host-side gbrain serve
-    # already owns 127.0.0.1:3131 and answers for a DIFFERENT brain. Binding
-    # both to one port would either fail to start or, worse, hand a tenant
-    # the wrong brain. Services inside this project reach this one by name
-    # (gbrain-serve:3131) and never touch the host port at all.
-    ports:
-      - "127.0.0.1:3132:3131"
+    # No ports here: a service in another container's network namespace
+    # cannot publish its own; the host mapping lives on the openclaw service.
     # The connection string is assembled INSIDE the container, from the
     # password env_file hands it. `$$` keeps Compose from interpolating —
     # Compose only reads `.env` for `${...}`, never an env_file, so a

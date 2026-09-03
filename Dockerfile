@@ -28,13 +28,14 @@ RUN printf '#!/bin/sh\nexec /app/node_modules/.bin/openclaw "$@"\n' > /usr/bin/o
 # commit to the same ref as gbrain-serve/Dockerfile so the two cannot drift.
 # GBRAIN_HOME moves gbrain's own config/state onto the persistent volume: HOME is
 # /root here and does not survive a recreate (docs/mcp/OPENCLAW.md names
-# GBRAIN_HOME as the knob "when the brain home isn't ~/.gbrain").
+# GBRAIN_HOME as the knob "when the brain home isn't ~/.gbrain"). It is a PARENT
+# directory — gbrain appends ".gbrain" itself — so /data yields /data/.gbrain.
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:$PATH"
 ARG GBRAIN_REF=5cfb84f1d
 RUN bun install -g "github:garrytan/gbrain#${GBRAIN_REF}" && gbrain --version \
  && ln -sf /root/.bun/bin/gbrain /usr/local/bin/gbrain && ln -sf /root/.bun/bin/bun /usr/local/bin/bun
-ENV GBRAIN_HOME=/data/.gbrain
+ENV GBRAIN_HOME=/data
 
 COPY start.sh /start.sh
 COPY failure-server.js /failure-server.js
