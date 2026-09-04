@@ -116,7 +116,14 @@ services:
       - >
         VOYAGE_API_KEY=$$(sed -n 's/^VOYAGE_API_KEY=//p' /data/.env | head -1);
         export VOYAGE_API_KEY;
+        [ -x /gbrain-home/.gbrain/start-autopilot.sh ] && bash /gbrain-home/.gbrain/start-autopilot.sh;
         exec /usr/bin/tini -- gbrain serve --http --port 3131 --bind 0.0.0.0
+    # The autopilot line is the "ONE LINE in your agent bootstrap" that
+    # `gbrain autopilot --install` prints on an ephemeral-container host
+    # (skills/setup/SKILL.md): the daemon (sync + extract + embed, supervising
+    # the minions worker) runs on the brain host, which is this container.
+    # The start script lives on the gbrain-serve-home volume, so a recreate
+    # keeps it; absence just means autopilot was never installed.
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3131/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
       interval: 15s
