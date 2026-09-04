@@ -7,6 +7,12 @@ RUN apt-get update && apt-get install -y git curl procps python3 make g++ cron t
 # shipping an unreviewed claude-code. Bump deliberately and record it.
 RUN npm install -g @anthropic-ai/claude-code@2.1.252 && npm cache clean --force
 
+# Shared libraries Chromium needs on a slim Debian image, installed the way
+# Playwright documents it (`playwright install-deps chromium`). gstack's
+# ./setup downloads chromium-headless-shell into the executor's HOME and then
+# fails with "Playwright Chromium could not be launched" without these.
+RUN npx --yes playwright@1.58.2 install-deps chromium && rm -rf /var/lib/apt/lists/* /root/.npm/_npx
+
 WORKDIR /app
 
 COPY package.json ./
