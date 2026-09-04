@@ -34,7 +34,8 @@ RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:$PATH"
 ARG GBRAIN_REF=5cfb84f1d
 RUN bun install -g "github:garrytan/gbrain#${GBRAIN_REF}" && gbrain --version \
- && ln -sf /root/.bun/bin/gbrain /usr/local/bin/gbrain && ln -sf /root/.bun/bin/bun /usr/local/bin/bun
+ && ln -sf /root/.bun/bin/gbrain /usr/local/bin/gbrain && ln -sf /root/.bun/bin/bun /usr/local/bin/bun \
+ && ln -sf /root/.bun/bin/bunx /usr/local/bin/bunx
 ENV GBRAIN_HOME=/data
 
 COPY start.sh /start.sh
