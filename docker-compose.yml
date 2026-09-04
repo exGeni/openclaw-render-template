@@ -101,12 +101,9 @@ services:
       - gbrain-serve-home:/gbrain-home
     # No ports here: a service in another container's network namespace
     # cannot publish its own; the host mapping lives on the openclaw service.
-    # The connection string is assembled INSIDE the container, from the
-    # password env_file hands it. `$$` keeps Compose from interpolating —
-    # Compose only reads `.env` for `${...}`, never an env_file, so a
-    # Compose-side `${POSTGRES_PASSWORD}` would silently expand to empty and
-    # the URL would carry a blank password. The value never enters the
-    # Compose config, so it stays out of `docker compose config` output too.
+    # GBRAIN_DATABASE_URL comes from .env.gbrain-postgres (gitignored, next to
+    # POSTGRES_PASSWORD) — ENGINES.md: "GBRAIN_DATABASE_URL is always stated
+    # intent". Nothing secret-shaped lives in this file.
     # The embedding key is read out of the volume at start, never through
     # Compose and never into a log. Without it the server answers
     # "vector search unavailable (missing_env)" and silently degrades every
@@ -117,7 +114,6 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >
-        export GBRAIN_DATABASE_URL="postgresql://gbrain:$$POSTGRES_PASSWORD@gbrain-postgres:5432/gbrain";
         VOYAGE_API_KEY=$$(sed -n 's/^VOYAGE_API_KEY=//p' /data/.env | head -1);
         export VOYAGE_API_KEY;
         exec /usr/bin/tini -- gbrain serve --http --port 3131 --bind 0.0.0.0
