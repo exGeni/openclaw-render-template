@@ -269,12 +269,15 @@ teardown_file() {
 @test "checksum gate: a corrupted pin in baked-tools.env fails docker build --target tools" {
   ctx="$BATS_TEST_TMPDIR/gate-ctx"
   mkdir -p "$ctx"
-  cp "$REPO/Dockerfile" "$REPO/.dockerignore" "$REPO/baked-tools.env" "$ctx/"
-  # Flip the last hex digit of BOTH arch checksums so the gate trips on any build host.
-  sed -i -E \
+  cp "$REPO/Dockerfile" "$REPO/.dockerignore" "$ctx/"
+  # Flip the last hex digit of BOTH arch checksums so the gate trips on any
+  # build host. No `sed -i`: GNU takes an optional suffix but BSD/macOS sed
+  # consumes the next arg (-E) as the suffix and falls back to BRE, silently
+  # corrupting nothing — write the mutated copy to the context instead.
+  sed -E \
     -e 's/^(CADDY_SHA512_(AMD64|ARM64)=[0-9a-f]{127})0$/\1__Z__/' \
     -e 's/^(CADDY_SHA512_(AMD64|ARM64)=[0-9a-f]{127})[1-9a-f]$/\10/' \
-    -e 's/__Z__$/1/' "$ctx/baked-tools.env"
+    -e 's/__Z__$/1/' "$REPO/baked-tools.env" >"$ctx/baked-tools.env"
   run cmp -s "$REPO/baked-tools.env" "$ctx/baked-tools.env"
   [ "$status" -ne 0 ]
   run docker build --progress=plain --target tools -t "$GATE_TAG" "$ctx"
