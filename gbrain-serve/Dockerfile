@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git curl ca-cer
 # INSTALL_FOR_AGENTS.md Step 1, default path.
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:$PATH"
-ARG GBRAIN_REF=5cfb84f1d
+ARG GBRAIN_REF=43597b19e50a3abf56409337f248f7966860293c
 RUN bun install -g "github:garrytan/gbrain#${GBRAIN_REF}" && gbrain --version
 
 ENTRYPOINT ["/usr/bin/tini", "--", "gbrain", "serve", "--http"]

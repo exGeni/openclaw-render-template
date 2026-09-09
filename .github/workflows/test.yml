@@ -8,11 +8,12 @@ jobs:
   unit-contract:
     name: unit + contract
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
       - name: Install shellcheck + bats + tmux
         # tmux is explicit, never assumed from the runner image — without it
         # the rescue-session survival test skips and CI goes green unproven.
@@ -25,6 +26,9 @@ jobs:
   e2e:
     name: docker e2e
     runs-on: ubuntu-latest
+    # The image build now includes a Rust compile of monolith; bound a stalled
+    # build/download instead of letting it run to GitHub's 6-hour cap.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Install bats
