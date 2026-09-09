@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.0.4] - 2026-09-07
+
+### Changed
+- Migrated the image runtime from `node:22-slim` to `node:24-slim` (all three node stages: `pins`, `tools`, and the final image). Required by the new alphaclaw pin: alphaclaw 0.9.80 and its exactly-pinned OpenClaw 2026.9.3 both gate installs on Node `>=24.16.0 <25 || >=26.1.0` (enforced by OpenClaw's preinstall check, which fails the Docker build loudly on an old base). `package.json` `engines` now mirrors that range, CI runs unit/contract on Node 24, and the contract greps lock the `node:24-slim` stages in.
+- Updated the bundled alphaclaw from 0.9.77 to 0.9.80, picking up three upstream releases: the live-tier downgrade re-stamp (0.9.78), hardened upgrade recovery / chat delivery / status reporting (0.9.79), and the Node 24.16 runtime + OpenClaw 2026.9.3 pin (0.9.80).
+
 ## [2.0.0.3] - 2026-09-06
 
 ### Added

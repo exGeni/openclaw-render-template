@@ -4,7 +4,7 @@
 #  baked-tools.env (repo; the single pin source: versions, checksums, MONOLITH_REV, PG_MAJOR)
 #       │ COPY                                   │ COPY
 #       ▼                                        ▼
-#  ┌─ stage pins (node:22-slim) ─────────┐  ┌─ stage tools (node:22-slim) ──────────────────────┐
+#  ┌─ stage pins (node:24-slim) ─────────┐  ┌─ stage tools (node:24-slim) ──────────────────────┐
 #  │ /monolith.env = MONOLITH_* lines     │  │ apt: ca-certificates curl unzip (build-only)      │
 #  │ /pg.env       = PG_MAJOR line        │  │ . baked-tools.env → arch case → dl() + sha*sum -c │
 #  │ (each file changes only when its own │  │  → /out/usr/local/bin/{caddy,tailscale,tailscaled,│
@@ -18,7 +18,7 @@
 #  │   --rev $MONOLITH_REV --locked → /opt/monolith  │                  │
 #  └──────┬───────────────────────────────────────────┘                 │
 #         │                 │                                          │
-#  ┌─ final (node:22-slim) ─┼─ layer order is load-bearing ────────────┼──┐
+#  ┌─ final (node:24-slim) ─┼─ layer order is load-bearing ────────────┼──┐
 #  │ 1 apt line (git curl … tmux)                UNCHANGED             │  │
 #  │ 2 NEW apt/PGDG RUN (reads /pg.env): ca-certificates openssl gpg   │  │
 #  │   jq git-lfs psmisc util-linux; PGDG key fingerprint check;       │  │
@@ -39,14 +39,14 @@
 #  --build-arg, so an ARG default would be a dashboard-overridable pin.
 
 # --- stage pins: split the manifest so each consumer's cache key depends only on its own pins
-FROM node:22-slim AS pins
+FROM node:24-slim AS pins
 COPY baked-tools.env /baked-tools.env
 RUN set -eu; \
     grep '^MONOLITH_' /baked-tools.env > /monolith.env; test -s /monolith.env; \
     grep '^PG_MAJOR=' /baked-tools.env > /pg.env; test -s /pg.env
 
 # --- stage tools: download + checksum-verify the static release binaries (build tooling stays here)
-FROM node:22-slim AS tools
+FROM node:24-slim AS tools
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl unzip && rm -rf /var/lib/apt/lists/*
 COPY baked-tools.env /opt/baked-tools.env
 # dash has no pipefail: every pipeline below ends in the command whose failure
@@ -91,7 +91,7 @@ RUN set -eu; \
     test "$(/opt/monolith/bin/monolith --version)" = "monolith ${MONOLITH_VERSION}"
 
 # --- final image
-FROM node:22-slim
+FROM node:24-slim
 
 RUN apt-get update && apt-get install -y git curl procps python3 make g++ cron tini vim screen tmux && rm -rf /var/lib/apt/lists/*
 

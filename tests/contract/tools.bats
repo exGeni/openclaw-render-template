@@ -84,14 +84,14 @@ env_value() { sed -nE "s/^$1=(.*)$/\1/p" "$ENVF"; }
 
 # --- Dockerfile stages ----------------------------------------------------------
 
-@test "Dockerfile: stages pins, tools, monolith-build + a node:22-slim final stage" {
-  grep -qxF 'FROM node:22-slim AS pins' "$DF"
-  grep -qxF 'FROM node:22-slim AS tools' "$DF"
+@test "Dockerfile: stages pins, tools, monolith-build + a node:24-slim final stage" {
+  grep -qxF 'FROM node:24-slim AS pins' "$DF"
+  grep -qxF 'FROM node:24-slim AS tools' "$DF"
   grep -qE '^FROM rust:[0-9]+\.[0-9]+\.[0-9]+-slim-bookworm@sha256:[0-9a-f]{64} AS monolith-build$' "$DF"
-  grep -qxF 'FROM node:22-slim' "$DF"
+  grep -qxF 'FROM node:24-slim' "$DF"
   [ "$(grep -c '^FROM ' "$DF")" -eq 4 ]
-  # Node 22 stays the runtime: no other base sneaks in
-  run grep -E '^FROM (node:(1[0-9]|2[013-9]|[3-9][0-9])|debian|ubuntu|alpine)' "$DF"
+  # Node 24 is the runtime (openclaw 2026.9.3 gates on >=24.16.0): no other base sneaks in
+  run grep -E '^FROM (node:(1[0-9]|2[0-35-9]|[3-9][0-9])|debian|ubuntu|alpine)' "$DF"
   [ "$status" -ne 0 ]
 }
 
@@ -153,7 +153,7 @@ env_value() { sed -nE "s/^$1=(.*)$/\1/p" "$ENVF"; }
 
 @test "Dockerfile: the header diagram names every package the apt/PGDG RUN installs" {
   # The header comment is the documented pipeline diagram ("keep in sync").
-  header=$(awk '/^FROM /{exit} {print}' "$DF" | awk '/final \(node:22-slim\)/{f=1} f')
+  header=$(awk '/^FROM /{exit} {print}' "$DF" | awk '/final \(node:24-slim\)/{f=1} f')
   [ -n "$header" ]
   pkgs=$(final_text | grep -oE 'apt-get install -y --no-install-recommends ca-certificates[^;&]*' | head -1 | sed 's/.*--no-install-recommends //')
   [ "$(wc -w <<<"$pkgs")" -ge 5 ]
