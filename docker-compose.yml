@@ -6,8 +6,8 @@ services:
       - "${PORT:-3000}:${PORT:-3000}"
       # gbrain-serve shares this container's network namespace (see that
       # service), so the brain's 3131 is published from here. Loopback only,
-      # and 3132 because 3131 on the host belongs to the operator's own brain.
-      - "127.0.0.1:3132:3131"
+      # and 3131 because the host is a thin client of this brain (gbrain init --mcp-only): the issuer is http://localhost:3131 and must be true for the host too.
+      - "127.0.0.1:3131:3131"
     env_file: .env
     volumes:
       # Persistent data survives container restarts (like Render disks)
