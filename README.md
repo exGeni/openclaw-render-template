@@ -229,7 +229,12 @@ lists every pinned version, checksum, `MONOLITH_REV` and `PG_MAJOR` the running 
 
 - Tool CVEs are handled by bumping the pin; nothing auto-updates inside the image.
 - Review the pins at each alphaclaw minor bump, or quarterly, whichever comes first.
-- Soft budgets: image size at most +300 MB over the 2.0.0.2 image; cold build at most +8 minutes.
+- Soft budgets: image size at most +300 MB over the 2.0.1.0 image; cold build at most +8 minutes.
+  The 2.0.1.0 baseline is 7.00 GB disk / 1.78 GB content, measured on amd64 with `docker images`. It includes the
+  gbrain CLI layer and the worker executor toolchain (`@openai/codex`, `agy`, gstack with its bundled
+  browser), which is why it is several times the size of the image the previous budget was written for.
+  `docker history --no-trunc --format '{{.Size}}\t{{.CreatedBy}}'` attributes the growth per layer — sort it
+  numerically, not with `sort -h`, which mis-orders docker's size strings and hides the largest layer.
 
 ### Bumping a pin
 

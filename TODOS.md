@@ -102,6 +102,10 @@
 **Priority:** P2
 **Depends on:** None
 
+### `ARG GBRAIN_REF` fails the no-ARG contract row
+
+`tools.bats:167` asserts the Dockerfile declares no `ARG`, because Render turns every service env var into a `--build-arg`; `Dockerfile:203` declares `ARG GBRAIN_REF`, so the row is red and a dashboard variable of that name would override the gbrain pin (`docker history` on a built image shows `RUN |1 GBRAIN_REF=…` on every downstream layer). Fix is either moving the ref into `baked-tools.env` like every other pin or a named exception in the row — not decided. **Effort:** S **Priority:** P1
+
 ## Docs
 
 ### CHANGELOG backfill for alphaclaw 0.9.66–0.9.76
