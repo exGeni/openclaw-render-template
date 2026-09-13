@@ -33,7 +33,7 @@ fi
 for s in $ORDER; do
   hr "RUN $s"
   "$PROBE_DIR/$s" 2>&1 | tee "$PROBE_OUT_DIR/${s%.sh}.stdout" || true
-  grep -hE '^PROBE-[0-9a-b]+: ' "$PROBE_OUT_DIR/${s%.sh}.stdout" >>"$PROBE_OUT_DIR/run-all-verdicts.txt" || \
+  grep -hE '^PROBE-[0-9A-Za-z]+: ' "$PROBE_OUT_DIR/${s%.sh}.stdout" >>"$PROBE_OUT_DIR/run-all-verdicts.txt" || \
     printf 'PROBE-?(%s): NO VERDICT LINE\n' "$s" >>"$PROBE_OUT_DIR/run-all-verdicts.txt"
 done
 
