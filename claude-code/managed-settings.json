@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "blockReadsOutsideWorkingDirectories": true
+  },
+  "allowManagedPermissionRulesOnly": true,
+  "disableClaudeAiConnectors": true,
+  "allowManagedMcpServersOnly": true,
+  "allowedMcpServers": [
+    { "serverUrl": "http://127.0.0.1:3131/*" }
+  ],
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "filesystem": {
+      "denyRead": [
+        "/data/.env",
+        "/data/agents",
+        "/data/.openclaw",
+        "/etc/claude-code",
+        "/proc"
+      ]
+    },
+    "credentials": {
+      "envVars": [
+        { "name": "GBRAIN_TOKEN", "mode": "deny" },
+        { "name": "GBRAIN_MAIN_TOKEN", "mode": "deny" },
+        { "name": "GBRAIN_TIFLIS_TOKEN", "mode": "deny" },
+        { "name": "GBRAIN_SIMLINKS_TOKEN", "mode": "deny" },
+        { "name": "GBRAIN_DISPATCHER_TIFLIS_TOKEN", "mode": "deny" },
+        { "name": "GBRAIN_DISPATCHER_SIMLINKS_TOKEN", "mode": "deny" },
+        { "name": "GBRAIN_REMOTE_TOKEN", "mode": "deny" },
+        { "name": "GBRAIN_HOME", "mode": "deny" }
+      ]
+    }
+  }
+}
