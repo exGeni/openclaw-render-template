@@ -20,16 +20,25 @@
         "/data/.openclaw",
         "/etc/claude-code",
         "/proc"
-      ]
+      ],
+      "allowRead": [
+        "~/.codex",
+        "~/.gemini",
+        "~/.gstack",
+        "~/.claude/skills",
+        "/root/.claude/skills/gstack"
+      ],
+      "allowWrite": [
+        "~/.codex",
+        "~/.gemini",
+        "~/.gstack"
+      ],
+      "allowManagedReadPathsOnly": true
     },
     "credentials": {
       "envVars": [
         { "name": "GBRAIN_TOKEN", "mode": "deny" },
         { "name": "GBRAIN_MAIN_TOKEN", "mode": "deny" },
-        { "name": "GBRAIN_TIFLIS_TOKEN", "mode": "deny" },
-        { "name": "GBRAIN_SIMLINKS_TOKEN", "mode": "deny" },
-        { "name": "GBRAIN_DISPATCHER_TIFLIS_TOKEN", "mode": "deny" },
-        { "name": "GBRAIN_DISPATCHER_SIMLINKS_TOKEN", "mode": "deny" },
         { "name": "GBRAIN_REMOTE_TOKEN", "mode": "deny" },
         { "name": "GBRAIN_HOME", "mode": "deny" }
       ]

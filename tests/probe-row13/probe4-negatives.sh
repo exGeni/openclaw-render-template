@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# probe4-negatives.sh — v4 §Measure 4: "Negatives: `claude-simlinks` from
-# `dispatcher-tiflis`, bare `claude`, foreign `cwd` and `resumeSessionId` →
-# rejected, or accepted and sandbox-denied: record which."
+# probe4-negatives.sh — v4 §Measure 4: "Negatives: one client's worker agent
+# spawned from another client's dispatcher, bare `claude`, foreign `cwd` and
+# `resumeSessionId` → rejected, or accepted and sandbox-denied: record which."
 #
-# Here the neighbour stands in for claude-simlinks: up.sh configures
+# Here the neighbour stands in for the other client's worker: up.sh configures
 # `claude-neighbour` as a full agent entry WITH its acpx alias, and deliberately
 # leaves it out of `acp.allowedAgents`, which up.sh sets to ["claude-probe"].
 # The gate under test is upstream's own: delivery.md, "OpenClaw still enforces

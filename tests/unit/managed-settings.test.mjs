@@ -14,6 +14,8 @@
 //   settings-reference.md#sandbox-enabled / -failifunavailable /
 //                        -enableweakernestedsandbox /
 //                        -allowunsandboxedcommands / -filesystem-denyread /
+//                        -filesystem-allowread / -filesystem-allowwrite /
+//                        -filesystem-allowmanagedreadpathsonly /
 //                        -credentials-envvars /
 //                        permissions.blockReadsOutsideWorkingDirectories /
 //                        allowManagedPermissionRulesOnly /
@@ -73,14 +75,86 @@ test("sandbox.filesystem.denyRead blocks the neighbour and host-state paths", ()
   assert.deepEqual(policy.sandbox.filesystem.denyRead, expected);
 });
 
+test("allowRead re-opens each worker's OWN tool state inside the denied HOME", () => {
+  // settings-reference#permissions-blockreadsoutsideworkingdirectories: "Files a
+  // tool reads from your home directory, such as `~/.gitconfig`, are denied with
+  // the rest; re-open a specific path with `sandbox.filesystem.allowRead` when a
+  // tool needs it." sandboxing.md, Configure sandboxing: "re-allow specific paths
+  // within a denied region using `sandbox.filesystem.allowRead`. When read rules
+  // overlap, the more specific path wins" -- so these narrower entries re-open
+  // exactly these directories inside the broad `/data/agents` deny, and nothing
+  // else. `~/` is "Relative to home directory" (same doc, path-prefix table), and
+  // every acpx alias sets its own HOME under `env -i`, so one managed list opens
+  // each worker's OWN dirs and no sibling's: /data/agents/<other>/home stays denied.
+  //
+  // /root/.claude/skills/gstack is the image's single gstack checkout that each
+  // worker's ~/.claude/skills/gstack symlink (and the sibling skill links beside
+  // it) resolves to. A symlink is only as readable as its target, and /root is a
+  // home directory outside the working directories, so it needs its own entry.
+  const expected = [
+    "~/.codex",
+    "~/.gemini",
+    "~/.gstack",
+    "~/.claude/skills",
+    "/root/.claude/skills/gstack",
+  ];
+  assert.deepEqual(policy.sandbox.filesystem.allowRead, expected);
+  // The worker HOME itself must never be re-opened wholesale: it holds
+  // ~/.claude.json and ~/.claude/.credentials.json.
+  for (const p of policy.sandbox.filesystem.allowRead) {
+    assert.notEqual(p, "~");
+    assert.notEqual(p, "~/");
+    assert.equal(p.includes("*"), false, `${p}: no wildcard in a read allow`);
+  }
+});
+
+test("allowWrite covers the tool state that is written, and not the skills tree", () => {
+  // sandboxing.md, Filesystem isolation: "Default write behavior: read and write
+  // access to the current working directory and its subdirectories, any
+  // directories you've added ... plus the session temp directory". A worker's cwd
+  // is /data/<client>, so nothing under its HOME is writable by default. codex
+  // writes sessions and a refreshed auth under ~/.codex, agy under ~/.gemini, and
+  // the gstack preamble writes ~/.gstack on EVERY skill run (sessions/, analytics/,
+  // config.yaml, the artifacts git fetch).
+  const expected = ["~/.codex", "~/.gemini", "~/.gstack"];
+  assert.deepEqual(policy.sandbox.filesystem.allowWrite, expected);
+  // The skills tree is read-only on purpose, and could not be made writable
+  // anyway: sandboxing.md, Protected paths, covers "~/.claude, or the directory
+  // CLAUDE_CONFIG_DIR points to" and states "There is no way to exempt one of
+  // these paths: an allowWrite entry or an Edit allow rule that covers the path
+  // doesn't lift the protection."
+  assert.equal(policy.sandbox.filesystem.allowWrite.includes("~/.claude/skills"), false);
+  assert.equal(
+    policy.sandbox.filesystem.allowWrite.includes("/root/.claude/skills/gstack"),
+    false,
+  );
+});
+
+test("only managed settings may widen read access", () => {
+  // sandboxing.md, Keep developers from widening the policy: "For array keys such
+  // as excludedCommands and allowRead, Claude Code merges entries from every scope
+  // the session loads, so a developer can append entries that widen the policy.
+  // Set allowManagedReadPathsOnly to true in managed settings so that only
+  // allowRead entries from managed settings are honored."
+  //
+  // Without it, a worker HOME's own .claude/settings.json could append
+  // allowRead: ["/data/agents"] and undo the whole isolation posture.
+  assert.equal(policy.sandbox.filesystem.allowManagedReadPathsOnly, true);
+  // It locks allowRead ONLY. settings-reference#sandbox-filesystem-allowmanagedreadpathsonly:
+  // "Claude Code still merges denyRead entries from every settings scope the
+  // session loads." So the renderer's per-worker denyRead of the sibling client
+  // roots keeps working, and sandbox.network.allowAllUnixSockets is a network key
+  // this filesystem lock does not touch.
+  assert.equal("allowManagedWritePathsOnly" in policy.sandbox.filesystem, false);
+});
+
 test("sandbox.credentials.envVars denies every worker-reachable brain variable", () => {
+  // Generic names only. A per-client variable would be redundant -- the acpx alias
+  // builds each worker's environment with `env -i`, so no GBRAIN_<CLIENT>_TOKEN is
+  // in it to deny -- and it would carry client identities into a public image.
   const expected = [
     "GBRAIN_TOKEN",
     "GBRAIN_MAIN_TOKEN",
-    "GBRAIN_TIFLIS_TOKEN",
-    "GBRAIN_SIMLINKS_TOKEN",
-    "GBRAIN_DISPATCHER_TIFLIS_TOKEN",
-    "GBRAIN_DISPATCHER_SIMLINKS_TOKEN",
     "GBRAIN_REMOTE_TOKEN",
     "GBRAIN_HOME",
   ];
@@ -117,6 +191,27 @@ test("SECURITY: the policy carries variable NAMES only, never a value", () => {
     assert.equal("injectHosts" in e, false);
   }
   assert.equal(/\b(sk-|ghp_|eyJ|Bearer )/.test(raw), false);
+});
+
+test("SECURITY: the policy names no client", () => {
+  // The image is public. Every path and variable here is generic or resolved
+  // per-session from `~`; a client slug in this file would publish the client
+  // list, and would also be dead weight (a per-client env deny cannot fire under
+  // the alias's `env -i`).
+  for (const e of policy.sandbox.credentials.envVars) {
+    assert.match(
+      e.name,
+      /^GBRAIN_(TOKEN|MAIN_TOKEN|REMOTE_TOKEN|HOME)$/,
+      `${e.name}: only the generic brain variables belong in a public policy`,
+    );
+  }
+  // Every /data path in the file is one of the three fleet-wide roots. A client
+  // root is /data/<slug>, so anything else here would be a client name.
+  const dataPaths = [...raw.matchAll(/"(\/data\/[^"]*)"/g)].map((m) => m[1]);
+  assert.deepEqual(
+    [...new Set(dataPaths)].sort(),
+    ["/data/.env", "/data/.openclaw", "/data/agents"],
+  );
 });
 
 test("reads outside the working directories are blocked", () => {
@@ -176,4 +271,15 @@ test("the policy declares no key outside the documented managed set", () => {
   assert.deepEqual(Object.keys(policy.permissions), [
     "blockReadsOutsideWorkingDirectories",
   ]);
+  // settings-reference#sandbox-filesystem types the object as "allowWrite,
+  // denyWrite, denyRead, and allowRead arrays, plus the allowManagedReadPathsOnly
+  // and disabled Booleans" -- there is no write-side sibling of the managed lock.
+  assert.deepEqual(Object.keys(policy.sandbox.filesystem).sort(), [
+    "allowManagedReadPathsOnly",
+    "allowRead",
+    "allowWrite",
+    "denyRead",
+  ]);
+  // `disabled` would switch filesystem isolation off entirely.
+  assert.equal("disabled" in policy.sandbox.filesystem, false);
 });
