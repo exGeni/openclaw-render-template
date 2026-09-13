@@ -12,6 +12,7 @@
 //   managed-settings.md  "Place the file on each machine" -> the Linux path
 //   sandboxing.md        "Enforce sandboxing with managed settings"
 //   settings-reference.md#sandbox-enabled / -failifunavailable /
+//                        -enableweakernestedsandbox /
 //                        -allowunsandboxedcommands / -filesystem-denyread /
 //                        -credentials-envvars /
 //                        permissions.blockReadsOutsideWorkingDirectories /
@@ -40,6 +41,25 @@ test("sandbox is on, hard-fails when unavailable, and has no unsandboxed escape 
   assert.equal(policy.sandbox.enabled, true);
   assert.equal(policy.sandbox.failIfUnavailable, true);
   assert.equal(policy.sandbox.allowUnsandboxedCommands, false);
+});
+
+test("the sandbox can actually start inside the unprivileged container", () => {
+  // sandboxing.md, Troubleshooting: "in an unprivileged container, bubblewrap
+  // can't mount a fresh /proc filesystem, so sandboxed commands fail with a
+  // bwrap error such as `Can't mount proc on /newroot/proc: Operation not
+  // permitted`. Set enableWeakerNestedSandbox to true so the inner sandbox
+  // bind-mounts the container's existing /proc instead."
+  //
+  // Paired with failIfUnavailable: true this is load-bearing, not an
+  // optimisation -- without it the sandbox cannot start and EVERY worker
+  // session exits at startup. settings-reference#sandbox-enableweakernestedsandbox
+  // states the cost: "which exposes process information that a fresh mount
+  // would hide. This reduces security; use it only when the outer container
+  // already provides the isolation you need."
+  assert.equal(policy.sandbox.enableWeakerNestedSandbox, true);
+  // The compensating control: /proc stays denied at the filesystem layer, so
+  // the bind-mounted /proc the weaker sandbox exposes is still unreadable.
+  assert.ok(policy.sandbox.filesystem.denyRead.includes("/proc"));
 });
 
 test("sandbox.filesystem.denyRead blocks the neighbour and host-state paths", () => {
@@ -73,6 +93,20 @@ test("sandbox.credentials.envVars denies every worker-reachable brain variable",
     assert.match(e.name, /^[A-Za-z_][A-Za-z0-9_]*$/);
     assert.deepEqual(Object.keys(e).sort(), ["mode", "name"]);
   }
+});
+
+test("the env-only scrub knob is deliberately NOT here", () => {
+  // CLAUDE_CODE_SUBPROCESS_ENV_SCRUB would "strip credentials from all
+  // subprocesses regardless of sandboxing" (sandboxing.md, Protect
+  // credentials). It has NO entry in settings-reference.md -- it is an
+  // environment variable (/docs/en/env-vars), not a settings key -- so it
+  // cannot be delivered by this file. Its place is the acpx alias `env -i`
+  // allowlist in the gateway config, and it carries a consequence that has to
+  // be measured first: settings-reference#sandbox-autoallowbashifsandboxed
+  // says it "turns auto-allow off", which would make every sandboxed Bash
+  // command prompt -- fatal for an unattended oneshot worker.
+  assert.equal("CLAUDE_CODE_SUBPROCESS_ENV_SCRUB" in policy, false);
+  assert.equal("env" in policy, false);
 });
 
 test("SECURITY: the policy carries variable NAMES only, never a value", () => {
@@ -122,6 +156,7 @@ test("the policy declares no key outside the documented managed set", () => {
   assert.deepEqual(Object.keys(policy.sandbox).sort(), [
     "allowUnsandboxedCommands",
     "credentials",
+    "enableWeakerNestedSandbox",
     "enabled",
     "failIfUnavailable",
     "filesystem",

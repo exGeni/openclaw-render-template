@@ -233,9 +233,18 @@ RUN npm install -g @openai/codex@0.154.0 && npm cache clean --force
 # Steps 2-4 of that section (the four ClawHub native skills, the AGENTS.md
 # dispatch block, the verification spawn) are gateway/volume state, not image
 # state, and are deliberately NOT done here.
-# HOME is /root at build time, so this installs at /root/.claude/skills/gstack.
-# A worker running under a per-client HOME on /data does not see that tree; the
-# HOME seeding is the renderer's job, outside the image.
+# The path is not free: setup derives its skills dir as the PARENT of its own
+# location (setup:65) and gates the whole Claude branch on that parent being
+# named "skills" (setup:2119,2126). From anywhere else -- /opt/gstack included
+# -- it takes the else branch at setup:2166-2168, "would symlink the source
+# into ~/.claude/skills/gstack/ and register from there", and setup:2482 pins
+# hook registration to ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/gstack. So a
+# shared /opt root would end up symlinked back into the build HOME anyway, with
+# two paths instead of one. HOME is /root at build time, so the one path is
+# /root/.claude/skills/gstack, root-owned.
+# A worker running under a per-client HOME on /data does not see that tree. It
+# gets it through a symlink ~/.claude/skills/gstack -> /root/.claude/skills/gstack
+# created by the renderer in each worker HOME. The image seeds no worker HOME.
 RUN git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git /root/.claude/skills/gstack \
  && git -C /root/.claude/skills/gstack fetch --depth 1 origin 71f6048e8ada25180e61438abc1d98cb151fe9a7 \
  && git -C /root/.claude/skills/gstack checkout --detach 71f6048e8ada25180e61438abc1d98cb151fe9a7 \
@@ -254,6 +263,12 @@ ENV AGY_CLI_DISABLE_AUTO_UPDATE=true
 # worker session can read it and cannot rewrite it; the policy itself denies
 # reads of /etc/claude-code from inside the sandbox. Baked into the image, not
 # the volume, so no worker HOME and no /data write can weaken it.
+# NOT set here: CLAUDE_CODE_SUBPROCESS_ENV_SCRUB, which would "strip credentials
+# from all subprocesses regardless of sandboxing" (sandboxing.md). It has no
+# entry in settings-reference.md -- it is an env var, not a settings key -- so
+# its place is the acpx alias `env -i` allowlist in the gateway config, and it
+# "turns auto-allow off" (settings-reference#sandbox-autoallowbashifsandboxed),
+# which would make every sandboxed Bash command prompt an unattended worker.
 COPY claude-code/managed-settings.json /etc/claude-code/managed-settings.json
 RUN chown root:root /etc/claude-code/managed-settings.json \
  && chmod 0644 /etc/claude-code/managed-settings.json \

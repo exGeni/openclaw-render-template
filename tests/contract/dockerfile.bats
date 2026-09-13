@@ -115,6 +115,22 @@ setup() {
   [ "$status" -ne 0 ]
 }
 
+@test "Dockerfile: gstack's parent directory is literally named skills (setup gates on it)" {
+  # setup:65  INSTALL_SKILLS_DIR="$(dirname "$INSTALL_GSTACK_DIR")"
+  # setup:2119 SKILLS_BASENAME="$(basename "$INSTALL_SKILLS_DIR")"
+  # setup:2126 if [ "$SKILLS_BASENAME" = "skills" ] -- the whole Claude install
+  # branch is gated on that name; anywhere else (e.g. /opt/gstack) setup takes
+  # the else branch at :2166-2168 and symlinks itself into
+  # $HOME/.claude/skills/gstack regardless. So the install path is not free.
+  dir=$(grep -vE '^[[:space:]]*#' "$REPO/Dockerfile" | grep -oE 'https://github.com/garrytan/gstack.git /[^ ]+' | head -1 | awk '{print $2}')
+  [ -n "$dir" ]
+  [ "$(basename "$(dirname "$dir")")" = "skills" ]
+  # every reference to the tree in build INSTRUCTIONS uses that one path
+  # (comments quote the vendor's ~/.claude/... and $CLAUDE_CONFIG_DIR forms)
+  paths=$(grep -vE '^[[:space:]]*#' "$REPO/Dockerfile" | grep -oE '(/[a-z0-9_.-]+)*/skills/gstack' | sort -u)
+  [ "$paths" = "$dir" ]
+}
+
 # --- Managed Claude Code policy -------------------------------------------------
 
 @test "Dockerfile: copies the managed policy to the documented Linux path, root-owned 0644" {

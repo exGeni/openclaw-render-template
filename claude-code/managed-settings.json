@@ -12,6 +12,7 @@
     "enabled": true,
     "failIfUnavailable": true,
     "allowUnsandboxedCommands": false,
+    "enableWeakerNestedSandbox": true,
     "filesystem": {
       "denyRead": [
         "/data/.env",
