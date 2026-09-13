@@ -149,6 +149,7 @@ env_value() { sed -nE "s/^$1=(.*)$/\1/p" "$ENVF"; }
   grep -qF 'test "$(bun --version)" = "${BUN_VERSION}"' <<<"$final"
   grep -qF 'test "$(bunx --version)" = "${BUN_VERSION}"' <<<"$final"
   grep -qF 'test "$(monolith --version)" = "monolith ${MONOLITH_VERSION}"' <<<"$final"
+  grep -qF 'test "$(agy --version)" = "${AGY_VERSION}"' <<<"$final"
 }
 
 @test "Dockerfile: the header diagram names every package the apt/PGDG RUN installs" {
@@ -204,8 +205,8 @@ env_value() { sed -nE "s/^$1=(.*)$/\1/p" "$ENVF"; }
 
 @test "Dockerfile: every artifact download in the tools stage is checksum-verified" {
   code=$(stage_text tools | grep -vE '^[[:space:]]*#')
-  [ "$(grep -c 'dl "https://' <<<"$code")" -eq 3 ]
-  [ "$(grep -Ec 'sha(256|512)sum -c -' <<<"$code")" -eq 3 ]
+  [ "$(grep -c 'dl "https://' <<<"$code")" -eq 4 ]
+  [ "$(grep -Ec 'sha(256|512)sum -c -' <<<"$code")" -eq 4 ]
   # the only command-position curl in the stage is the dl() definition itself
   [ "$(grep -Ec "$CURL_CMD_ERE" <<<"$code")" -eq 1 ]
 }
@@ -294,7 +295,7 @@ env_value() { sed -nE "s/^$1=(.*)$/\1/p" "$ENVF"; }
   [ "$status" -ne 0 ]
   while read -r src; do
     case "$src" in
-      package.json|start.sh|failure-server.js|baked-tools.env|debug-start.sh) ;;
+      package.json|start.sh|failure-server.js|baked-tools.env|debug-start.sh|claude-code/managed-settings.json) ;;
       *) echo "unexpected COPY source: $src"; false ;;
     esac
   done < <(grep '^COPY ' "$DF" | grep -v -- '--from=' | awk '{print $2}')

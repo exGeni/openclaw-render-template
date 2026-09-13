@@ -8,7 +8,7 @@
 #  │ /monolith.env = MONOLITH_* lines     │  │ apt: ca-certificates curl unzip (build-only)      │
 #  │ /pg.env       = PG_MAJOR line        │  │ . baked-tools.env → arch case → dl() + sha*sum -c │
 #  │ (each file changes only when its own │  │  → /out/usr/local/bin/{caddy,tailscale,tailscaled,│
-#  │  pins change, so downstream caches   │  │     bun,bunx→bun} ; /out/etc/baked-tools.env       │
+#  │  pins change, so downstream caches   │  │     bun,bunx→bun,agy} ; /out/etc/baked-tools.env   │
 #  │  survive unrelated pin bumps)        │  └─────────────────────────┬─────────────────────────┘
 #  └──────┬─────────────────┬────────────┘                            │
 #         │ /monolith.env   │ /pg.env                                  │
@@ -19,7 +19,8 @@
 #  └──────┬───────────────────────────────────────────┘                 │
 #         │                 │                                          │
 #  ┌─ final (node:24-slim) ─┼─ layer order is load-bearing ────────────┼──┐
-#  │ 1 apt line (git curl … tmux)                UNCHANGED             │  │
+#  │ 1 apt line (git curl … tmux, + bubblewrap socat: the Claude Code  │  │
+#  │   sandbox deps on Linux — sandboxing.md "Set up Linux and WSL2")  │  │
 #  │ 2 NEW apt/PGDG RUN (reads /pg.env): ca-certificates openssl gpg   │  │
 #  │   jq git-lfs psmisc util-linux; PGDG key fingerprint check;       │  │
 #  │   postgresql-client-$PG_MAJOR (client only);                      │  │
@@ -56,8 +57,8 @@ RUN set -eu; \
     dl() { curl -fsSL --retry 5 --retry-all-errors --retry-max-time 180 --connect-timeout 20 -o "$2" "$1"; }; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
-      amd64) caddy_sha="$CADDY_SHA512_AMD64"; ts_sha="$TAILSCALE_SHA256_AMD64"; bun_arch=x64;     bun_sha="$BUN_SHA256_X64" ;; \
-      arm64) caddy_sha="$CADDY_SHA512_ARM64"; ts_sha="$TAILSCALE_SHA256_ARM64"; bun_arch=aarch64; bun_sha="$BUN_SHA256_AARCH64" ;; \
+      amd64) caddy_sha="$CADDY_SHA512_AMD64"; ts_sha="$TAILSCALE_SHA256_AMD64"; bun_arch=x64;     bun_sha="$BUN_SHA256_X64";     agy_path=linux-x64/cli_linux_x64;   agy_sha="$AGY_SHA512_AMD64" ;; \
+      arm64) caddy_sha="$CADDY_SHA512_ARM64"; ts_sha="$TAILSCALE_SHA256_ARM64"; bun_arch=aarch64; bun_sha="$BUN_SHA256_AARCH64"; agy_path=linux-arm/cli_linux_arm64; agy_sha="$AGY_SHA512_ARM64" ;; \
       *) echo "unsupported architecture: $arch" >&2; exit 1 ;; \
     esac; \
     work="$(mktemp -d)"; cd "$work"; \
@@ -76,6 +77,10 @@ RUN set -eu; \
     unzip -q bun.zip; \
     install -m 0755 "bun-linux-${bun_arch}/bun" /out/usr/local/bin/bun; \
     ln -s bun /out/usr/local/bin/bunx; \
+    dl "https://storage.googleapis.com/antigravity-public/antigravity-cli/${AGY_BUILD}/${agy_path}.tar.gz" agy.tgz; \
+    echo "${agy_sha}  agy.tgz" | sha512sum -c -; \
+    tar -xzf agy.tgz antigravity; \
+    install -m 0755 antigravity /out/usr/local/bin/agy; \
     install -m 0644 /opt/baked-tools.env /out/etc/baked-tools.env; \
     cd /; rm -rf "$work"
 
@@ -93,7 +98,15 @@ RUN set -eu; \
 # --- final image
 FROM node:24-slim
 
-RUN apt-get update && apt-get install -y git curl procps python3 make g++ cron tini vim screen tmux unzip && rm -rf /var/lib/apt/lists/*
+# bubblewrap + socat are the Claude Code sandbox dependencies on Linux:
+# "the unprivileged sandboxing tool that enforces filesystem isolation" and
+# "the relay used to route network traffic through the sandbox proxy"
+# (code.claude.com/docs/en/sandboxing "Set up Linux and WSL2"). The managed
+# policy in /etc/claude-code sets sandbox.failIfUnavailable=true, so a worker
+# session refuses to start when either package is missing — they are a hard
+# dependency of the image, not an optional extra. Debian-versioned like tmux:
+# an exact apt pin expires when the pool rotates (see AGENTS.md "Baked tools").
+RUN apt-get update && apt-get install -y git curl procps python3 make g++ cron tini vim screen tmux unzip bubblewrap socat && rm -rf /var/lib/apt/lists/*
 
 # Support packages + the PostgreSQL CLIENT (never the server) from the signed PGDG
 # repo. Sits ABOVE the npm layers on purpose: alphaclaw pin bumps are frequent and
@@ -169,7 +182,8 @@ RUN set -eu; \
     test -x /usr/local/bin/tailscaled; \
     test "$(bun --version)" = "${BUN_VERSION}"; \
     test "$(bunx --version)" = "${BUN_VERSION}"; \
-    test "$(monolith --version)" = "monolith ${MONOLITH_VERSION}"
+    test "$(monolith --version)" = "monolith ${MONOLITH_VERSION}"; \
+    test "$(agy --version)" = "${AGY_VERSION}"
 
 # gbrain CLI, installed exactly as INSTALL_FOR_AGENTS.md "Step 1: Install GBrain"
 # prescribes (`bun install -g github:garrytan/gbrain#<ref>`; the npm registry is
@@ -190,6 +204,60 @@ ARG GBRAIN_REF=43597b19e50a3abf56409337f248f7966860293c
 RUN bun install -g "github:garrytan/gbrain#${GBRAIN_REF}" && gbrain --version \
  && ln -sf /root/.bun/bin/gbrain /usr/local/bin/gbrain
 ENV GBRAIN_HOME=/data
+
+# --- worker tooling: the executors an ACP-spawned Claude Code worker calls -----
+# Everything below is image-owned so a recreate reproduces it; nothing here is
+# written into /data. All three land on PATH for every user (/usr/local/bin or
+# a global npm prefix), because an ACP worker runs under its own per-client
+# HOME on the volume, not under /root.
+
+# OpenAI Codex CLI, pinned exactly, same discipline as the claude-code pin
+# above: an unpinned global install floats whenever an earlier layer changes.
+# The package resolves its platform binary through optionalDependencies
+# (@openai/codex-linux-{x64,arm64}), so one spec covers both arches.
+RUN npm install -g @openai/codex@0.154.0 && npm cache clean --force
+
+# gstack, installed the way its own docs prescribe for an OpenClaw host —
+# docs/OPENCLAW.md "Installation" step 1 spawns Claude Code sessions with
+# "gstack installed at ~/.claude/skills/gstack", and README.md "Step 1: Install
+# on your machine" gives the command as
+#   git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git \
+#     ~/.claude/skills/gstack && cd ~/.claude/skills/gstack && ./setup
+# Two deliberate departures from that line, both required here:
+#   * the documented clone tracks a moving branch, and garrytan/gstack ships no
+#     tags, so the commit is pinned instead (VERSION 1.84.1.0 at this SHA) —
+#     the same rule as the alphaclaw and claude-code pins. `fetch --depth 1
+#     origin <sha>` keeps the clone shallow.
+#   * `./setup` is what installs the skills and builds the browser; it needs the
+#     Chromium shared libraries the playwright layer above already installs.
+# Steps 2-4 of that section (the four ClawHub native skills, the AGENTS.md
+# dispatch block, the verification spawn) are gateway/volume state, not image
+# state, and are deliberately NOT done here.
+# HOME is /root at build time, so this installs at /root/.claude/skills/gstack.
+# A worker running under a per-client HOME on /data does not see that tree; the
+# HOME seeding is the renderer's job, outside the image.
+RUN git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git /root/.claude/skills/gstack \
+ && git -C /root/.claude/skills/gstack fetch --depth 1 origin 71f6048e8ada25180e61438abc1d98cb151fe9a7 \
+ && git -C /root/.claude/skills/gstack checkout --detach 71f6048e8ada25180e61438abc1d98cb151fe9a7 \
+ && grep -qxF 1.84.1.0 /root/.claude/skills/gstack/VERSION \
+ && cd /root/.claude/skills/gstack \
+ && ./setup
+
+# agy runs a background self-updater on a 15-minute debounce, which would
+# replace the checksum-verified binary the tools stage pinned. The vendor's own
+# knob turns it off (antigravity.google/docs/cli/troubleshooting/).
+ENV AGY_CLI_DISABLE_AUTO_UPDATE=true
+
+# The managed Claude Code policy for worker sessions. Linux path per
+# code.claude.com/docs/en/managed-settings "Place the file on each machine":
+# "Linux and WSL: /etc/claude-code/managed-settings.json". Root-owned 0644 so a
+# worker session can read it and cannot rewrite it; the policy itself denies
+# reads of /etc/claude-code from inside the sandbox. Baked into the image, not
+# the volume, so no worker HOME and no /data write can weaken it.
+COPY claude-code/managed-settings.json /etc/claude-code/managed-settings.json
+RUN chown root:root /etc/claude-code/managed-settings.json \
+ && chmod 0644 /etc/claude-code/managed-settings.json \
+ && node -e "JSON.parse(require('fs').readFileSync('/etc/claude-code/managed-settings.json','utf8'))"
 
 COPY start.sh /start.sh
 COPY failure-server.js /failure-server.js

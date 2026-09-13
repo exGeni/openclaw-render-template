@@ -8,3 +8,4 @@
 !failure-server.js
 !baked-tools.env
 !debug-start.sh
+!claude-code/managed-settings.json
