@@ -38,6 +38,23 @@ FORBIDDEN_IMAGES="openclaw-stack-openclaw:latest openclaw-stack-gbrain-serve:lat
 PROBE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROBE_ENV_FILE="$PROBE_DIR/.probe.env"
 PROBE_OUT_DIR="$PROBE_DIR/out"
+REPO_ROOT="$(cd "$PROBE_DIR/../.." && pwd)"
+
+# ------------------------------------------------------- production confinement
+# The stand runs the container with the same two relaxations the `openclaw`
+# service carries in docker-compose.yml, so what it measures is the production
+# configuration. Without them Claude Code's bubblewrap sandbox cannot create a
+# namespace inside the container and every sandboxed Bash command fails, which
+# is a property of the stand rather than of the image under test.
+#
+# Absolute path on purpose: the Docker CLI resolves a relative `seccomp=` path
+# from the working directory `docker` is invoked in, and these scripts are
+# runnable from anywhere.
+PROBE_SECCOMP_PROFILE="$REPO_ROOT/seccomp-userns.json"
+PROBE_SECURITY_OPTS=(
+  --security-opt "seccomp=$PROBE_SECCOMP_PROFILE"
+  --security-opt apparmor=unconfined
+)
 
 # ------------------------------------------------------------- probe subjects
 PROBE_HOME="/data/agents/probe/home"
@@ -94,8 +111,17 @@ probe_running() {
   [ "$(docker inspect -f '{{.State.Running}}' "$PROBE_CONTAINER" 2>/dev/null || echo false)" = "true" ]
 }
 
+# Assert the profile docker-compose.yml names is on disk. `docker run` fails
+# loudly on a missing profile, but the message points at a path rather than at
+# the repo file that is supposed to be there.
+require_security_profile() {
+  [ -f "$PROBE_SECCOMP_PROFILE" ] \
+    || die "seccomp profile not found: $PROBE_SECCOMP_PROFILE (it is the repo file docker-compose.yml's openclaw service names)"
+}
+
 # Assert the container we are about to talk to is OUR container, built from the
-# candidate image, holding no live volume and publishing no port.
+# candidate image, holding no live volume, publishing no port, and carrying the
+# production security_opt.
 guard_container() {
   guard_names
   probe_running || die "probe container $PROBE_CONTAINER is not running — run up.sh first"
@@ -116,6 +142,20 @@ guard_container() {
     *) case "$ports" in
          *HostPort*) die "container $PROBE_CONTAINER publishes host ports: $ports";;
        esac;;
+  esac
+
+  # A container started before the security_opt landed is still runnable and
+  # answers /health, so nothing else here would notice — and every sandbox probe
+  # would then measure a configuration production does not have.
+  local secopt
+  secopt="$(docker inspect -f '{{json .HostConfig.SecurityOpt}}' "$PROBE_CONTAINER")"
+  case "$secopt" in
+    *"seccomp=$PROBE_SECCOMP_PROFILE"*) ;;
+    *) die "container $PROBE_CONTAINER was not started with the repo seccomp profile (SecurityOpt=$secopt) — recreate it: down.sh --yes --keep-volume && up.sh";;
+  esac
+  case "$secopt" in
+    *apparmor=unconfined*) ;;
+    *) die "container $PROBE_CONTAINER was not started with apparmor=unconfined (SecurityOpt=$secopt) — recreate it: down.sh --yes --keep-volume && up.sh";;
   esac
 }
 

@@ -14,6 +14,11 @@
 # claude-code/managed-settings.json sets `failIfUnavailable: true`, so with
 # bwrap gone a worker session must refuse to start rather than run unsandboxed.
 #
+# The test has a PRECONDITION and asserts it: the baseline turn, with bwrap
+# present, must exit 0. "Removing X makes it refuse" says nothing about X if it
+# was already refusing. The assertion runs before the rename, so a failed
+# precondition leaves the container untouched.
+#
 # This renames /usr/bin/bwrap INSIDE THE PROBE CONTAINER ONLY and restores it
 # in a trap that fires on every exit path, including a failure or a Ctrl-C.
 # Nothing outside the probe container is touched.
@@ -36,6 +41,20 @@ run_logged "$PROBE_OUT_DIR/p2b2-before.txt" \
 before_rc="$(logged_rc "$PROBE_OUT_DIR/p2b2-before.txt")"
 say "exit=$before_rc"
 
+# PRECONDITION, asserted before anything is broken. The property under test is
+# "with bwrap ABSENT the session refuses to start", and that is only meaningful
+# against a session that WORKS with bwrap present. If the baseline already
+# failed, the bwrap-removed half fails for the reason it already had and the
+# classification below reports PASS off an exit code that proves nothing.
+if [ "$before_rc" != "0" ]; then
+  hr "precondition failed"
+  say "baseline exit: $before_rc, with bwrap PRESENT. Nothing was removed."
+  say "Read out/p2b2-before.txt. A sandbox that cannot start before the test"
+  say "begins makes the bwrap-removed half unreadable."
+  verdict 2b "FAIL (baseline exit=$before_rc with bwrap present — a working sandbox is the precondition of this test)"
+  exit 1
+fi
+
 hr "removing bwrap (rename, inside the probe container only)"
 pexec sh -c 'mv /usr/bin/bwrap /usr/bin/bwrap.off'
 pexec sh -c 'ls -la /usr/bin/bwrap 2>&1 || true; ls -la /usr/bin/bwrap.off'
@@ -52,7 +71,7 @@ refused=no
 grep -qiE 'sandbox|bwrap|bubblewrap|unavailable' "$PROBE_OUT_DIR/p2b2-broken.txt" && named_sandbox=yes || named_sandbox=no
 
 hr "classification"
-say "baseline exit           : $before_rc"
+say "baseline exit           : $before_rc  (asserted 0 above — the precondition)"
 say "bwrap-removed exit      : $broken_rc"
 say "refused to start        : $refused"
 say "error names the sandbox : $named_sandbox"

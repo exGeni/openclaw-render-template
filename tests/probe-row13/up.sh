@@ -9,10 +9,14 @@
 #   * container run shape — tests/e2e/docker.bats:36-52 (this repo's own e2e
 #     harness): `docker run -d --name "$CONTAINER" --tmpfs /data -p ... -e PORT
 #     -e SETUP_PASSWORD -e OPENCLAW_GATEWAY_TOKEN -e WEBHOOK_TOKEN "$IMAGE"`,
-#     then poll /health. Two deliberate differences, both stated in the README:
+#     then poll /health. Three deliberate differences, all stated in the README:
 #     a named volume instead of --tmpfs (the owner's login must survive a
-#     restart), and no published port (the live stack owns 3000/3131; every
-#     call here is a docker exec).
+#     restart), no published port (the live stack owns 3000/3131; every
+#     call here is a docker exec), and the `openclaw` service's own
+#     `security_opt` from docker-compose.yml — the custom seccomp profile plus
+#     apparmor=unconfined, without which Claude Code's bubblewrap sandbox
+#     cannot create a namespace and every sandbox probe measures the stand
+#     rather than the image.
 #   * config writes — docs/cli/config.md "Examples":
 #       openclaw config set browser.profiles.work '{"cdpPort":18801,...}' \
 #         --strict-json --merge
@@ -75,17 +79,20 @@ if docker container inspect "$PROBE_CONTAINER" >/dev/null 2>&1; then
     docker start "$PROBE_CONTAINER" >/dev/null
   fi
 else
+  require_security_profile
   docker volume create "$PROBE_VOLUME" >/dev/null
   say "starting $PROBE_CONTAINER from $PROBE_IMAGE on volume $PROBE_VOLUME (no published ports)"
+  say "security_opt: ${PROBE_SECURITY_OPTS[*]}"
   docker run -d --name "$PROBE_CONTAINER" \
     --env-file "$PROBE_ENV_FILE" \
+    "${PROBE_SECURITY_OPTS[@]}" \
     -v "$PROBE_VOLUME:/data" \
     "$PROBE_IMAGE" >/dev/null
 fi
 
 guard_container
 hr "container identity"
-docker inspect -f 'image={{.Config.Image}} ports={{json .NetworkSettings.Ports}} mounts={{range .Mounts}}{{.Name}}:{{.Destination}} {{end}}' "$PROBE_CONTAINER"
+docker inspect -f 'image={{.Config.Image}} ports={{json .NetworkSettings.Ports}} mounts={{range .Mounts}}{{.Name}}:{{.Destination}} {{end}} security_opt={{json .HostConfig.SecurityOpt}}' "$PROBE_CONTAINER"
 
 # ------------------------------------------------------------ 3. health gate
 hr "gateway health (docker exec curl 127.0.0.1:3000/health, inside the probe)"

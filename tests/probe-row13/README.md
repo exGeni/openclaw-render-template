@@ -33,6 +33,20 @@ container call goes through `pexec` / `occ`, which address `$PROBE_CONTAINER`
 and nothing else. No published port is needed: the health check and every CLI
 call are `docker exec` from inside the probe container.
 
+## The one way the stand copies production
+
+`up.sh` starts the container with the same `security_opt` the `openclaw`
+service carries in `docker-compose.yml` — `seccomp=<repo>/seccomp-userns.json`
+(Docker's default profile plus `clone`, `unshare`, `mount`, `umount2`,
+`pivot_root`) and `apparmor=unconfined`. Both are needed and neither is
+sufficient alone: without them Claude Code's bubblewrap sandbox cannot create a
+namespace inside the container, every sandboxed Bash command fails with
+`bwrap: No permissions to create new namespace`, and every sandbox probe here
+measures the stand rather than the image. `guard_container` asserts both on the
+running container, so a container left over from before this landed is refused
+rather than silently measured; recreate it with
+`down.sh --yes --keep-volume && up.sh`.
+
 No real secret is copied anywhere. `up.sh` generates `.probe.env` (0600,
 gitignored) with `openssl rand -hex 32` for `SETUP_PASSWORD`,
 `OPENCLAW_GATEWAY_TOKEN` and `WEBHOOK_TOKEN`. The "tokens" the probes hunt for
@@ -43,10 +57,10 @@ nothing.
 
 | script | measures | plan item | needs |
 |---|---|---|---|
-| `up.sh` | brings the container up, seeds config + canaries, gates on the login | precondition for 1-5 | docker |
+| `up.sh` | brings the container up **with the production `security_opt`**, seeds config + canaries, gates on the login | precondition for 1-5 | docker |
 | `probe1-env.sh` | the acpx alias's `env -i` argv: exact child env NAME set | v4 §Measure 1 | nothing |
 | `probe2-sandbox.sh` | 2A `claude -p`, 2B a real ACP spawn: own canary readable, neighbour canary / `/data/.env` / neighbour HOME token / `/proc/1/environ` / `codex exec` / `agy` / the Read tool all denied, denial text captured verbatim; records whether `bwrap` was actually used | v4 §Measure 2 | login (2A), onboarded gateway + provider key (2B) |
-| `probe2b-broken-bwrap.sh` | `bwrap` renamed away → the session must refuse to start (`sandbox.failIfUnavailable`) | v4 §Measure 2, last clause | login |
+| `probe2b-broken-bwrap.sh` | asserts the baseline turn exits 0 with `bwrap` PRESENT, then renames `bwrap` away → the session must refuse to start (`sandbox.failIfUnavailable`). A non-zero baseline is a FAIL and nothing is removed: "removing X makes it refuse" measures nothing if it was already refusing | v4 §Measure 2, last clause | login |
 | `probe3-auth.sh` | MCP surface and connectors in the worker HOME | v4 §Measure 3 (the `whoami` half is **not** measurable without a minted brain client, owner O3) | login |
 | `probe4-negatives.sh` | four negative spawns: not-allowed agent, bare `claude`, foreign `cwd`, bogus `resumeSessionId` | v4 §Measure 4 | onboarded gateway + provider key |
 | `probe5-acpx.sh` | is acpx present in a fresh volume at all; install `@openclaw/acpx@2026.9.3`; `plugins doctor` | v4 §Measure 5 | network |
