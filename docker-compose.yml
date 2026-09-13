@@ -2,6 +2,28 @@ services:
   openclaw:
     build: .
     restart: unless-stopped
+    # Claude Code's Bash sandbox shells out to bubblewrap, which first creates a
+    # user + mount namespace and then does mount work inside it; two container
+    # layers deny those two steps in sequence, and measurement on 2026-09-13
+    # showed neither relaxation works alone. seccomp: Docker's builtin profile
+    # allows clone/unshare carrying a CLONE_NEW* bit only under CAP_SYS_ADMIN,
+    # which this container does not have, so namespace creation returns EPERM —
+    # hence ./seccomp-userns.json, which is moby/profiles seccomp/default.json
+    # plus exactly one entry (clone, unshare, mount, umount2, pivot_root), so the
+    # filter stays enforcing instead of switched off; apparmor=unconfined then
+    # clears docker-default's denial of bwrap's `mount --make-rslave /`, and has
+    # no compose-only tighter form because a custom AppArmor profile has to be
+    # loaded on the host with apparmor_parser first. The trade is real: after
+    # this the container itself is confined by neither AppArmor nor the full
+    # default seccomp profile. `sandbox.enableWeakerNestedSandbox` stays true in
+    # claude-code/managed-settings.json — measured 2026-09-13, even with both
+    # layers relaxed a fresh /proc in a new PID namespace still fails with
+    # `Can't mount proc on /newroot/proc: Operation not permitted`, the exact
+    # error that key exists for (code.claude.com/docs/en/sandboxing,
+    # Troubleshooting).
+    security_opt:
+      - seccomp=./seccomp-userns.json
+      - apparmor=unconfined
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
       # gbrain-serve shares this container's network namespace (see that
