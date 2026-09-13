@@ -145,7 +145,7 @@ RUN set -eu; \
 # Pinned exactly, same discipline as the alphaclaw SHA pin: an unpinned
 # install floats to latest whenever an earlier layer changes, silently
 # shipping an unreviewed claude-code. Bump deliberately and record it.
-RUN npm install -g @anthropic-ai/claude-code@2.1.252 && npm cache clean --force
+RUN npm install -g @anthropic-ai/claude-code@2.1.270 && npm cache clean --force
 
 # Shared libraries Chromium needs on a slim Debian image, installed the way
 # Playwright documents it (`playwright install-deps chromium`). gstack's

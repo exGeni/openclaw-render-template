@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.1.2] - 2026-09-13
+
+### Changed
+- Bumped the pinned global `@anthropic-ai/claude-code` install (`Dockerfile:148`) from `2.1.252` to `2.1.270` — the version Claude Code's own auto-updater had already moved the live container to (see the `2.0.1.1` entry above for the failure that surfaced the drift). Same deliberate-bump-and-record discipline as the alphaclaw SHA pin; `tests/contract/dockerfile.bats` locks the pin format (`npm install -g @anthropic-ai/claude-code@X.Y.Z`) rather than the exact version, so no test expectation needed updating.
+
 ## [2.0.1.1] - 2026-09-13
 
 ### Changed
