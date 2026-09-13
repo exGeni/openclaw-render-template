@@ -201,8 +201,13 @@ RUN set -eu; \
 # directory — gbrain appends ".gbrain" itself — so /data yields /data/.gbrain.
 ENV PATH="/root/.bun/bin:$PATH"
 ARG GBRAIN_REF=43597b19e50a3abf56409337f248f7966860293c
+# `bun pm cache rm` is bun's own cache purge, the counterpart of the
+# `npm cache clean --force` every npm layer above already runs. It must stay
+# INSIDE this RUN: a later layer cannot delete bytes an earlier one committed.
 RUN bun install -g "github:garrytan/gbrain#${GBRAIN_REF}" && gbrain --version \
- && ln -sf /root/.bun/bin/gbrain /usr/local/bin/gbrain
+ && ln -sf /root/.bun/bin/gbrain /usr/local/bin/gbrain \
+ && bun pm cache rm \
+ && test ! -d /root/.bun/install/cache
 ENV GBRAIN_HOME=/data
 
 # --- worker tooling: the executors an ACP-spawned Claude Code worker calls -----
@@ -245,12 +250,18 @@ RUN npm install -g @openai/codex@0.154.0 && npm cache clean --force
 # A worker running under a per-client HOME on /data does not see that tree. It
 # gets it through a symlink ~/.claude/skills/gstack -> /root/.claude/skills/gstack
 # created by the renderer in each worker HOME. The image seeds no worker HOME.
+# ./setup runs `bun install`, which fills bun's global download cache with ~1.3 GB
+# of build residue nothing reads at runtime; `bun pm cache rm` in the same RUN is
+# what keeps those bytes out of the layer. The browser IS kept: client work is
+# websites, and the playwright deps layer above exists for exactly that.
 RUN git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git /root/.claude/skills/gstack \
  && git -C /root/.claude/skills/gstack fetch --depth 1 origin 71f6048e8ada25180e61438abc1d98cb151fe9a7 \
  && git -C /root/.claude/skills/gstack checkout --detach 71f6048e8ada25180e61438abc1d98cb151fe9a7 \
  && grep -qxF 1.84.1.0 /root/.claude/skills/gstack/VERSION \
  && cd /root/.claude/skills/gstack \
- && ./setup
+ && ./setup \
+ && bun pm cache rm \
+ && test ! -d /root/.bun/install/cache
 
 # agy runs a background self-updater on a 15-minute debounce, which would
 # replace the checksum-verified binary the tools stage pinned. The vendor's own

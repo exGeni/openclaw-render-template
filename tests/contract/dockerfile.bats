@@ -106,7 +106,7 @@ setup() {
   grep -qF 'git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git /root/.claude/skills/gstack' "$REPO/Dockerfile"
   [ "$(grep -cE 'checkout --detach [0-9a-f]{40}' "$REPO/Dockerfile")" -eq 1 ]
   grep -qE 'grep -qxF [0-9]+\.[0-9]+\.[0-9]+\.[0-9]+ /root/\.claude/skills/gstack/VERSION' "$REPO/Dockerfile"
-  grep -qE '^ && \./setup$' "$REPO/Dockerfile"
+  grep -qE '^ && \./setup( \\)?$' "$REPO/Dockerfile"
   # the fetch and the checkout must name the SAME commit, or the pin is a lie
   shas=$(grep -oE '(fetch --depth 1 origin|checkout --detach) [0-9a-f]{40}' "$REPO/Dockerfile" | awk '{print $NF}' | sort -u)
   [ "$(wc -l <<<"$shas")" -eq 1 ]
@@ -129,6 +129,20 @@ setup() {
   # (comments quote the vendor's ~/.claude/... and $CLAUDE_CONFIG_DIR forms)
   paths=$(grep -vE '^[[:space:]]*#' "$REPO/Dockerfile" | grep -oE '(/[a-z0-9_.-]+)*/skills/gstack' | sort -u)
   [ "$paths" = "$dir" ]
+}
+
+@test "Dockerfile: every bun layer purges bun's download cache in its own RUN" {
+  # bun has no equivalent of the `npm cache clean --force` the npm layers run,
+  # and ./setup alone leaves ~1.3 GB of download cache behind. The purge must be
+  # in the SAME RUN: a later layer cannot delete bytes an earlier one committed.
+  joined=$(sed -e ':a' -e '/\\$/N; s/\\\n//; ta' "$REPO/Dockerfile")
+  n=0
+  while IFS= read -r line; do
+    n=$((n + 1))
+    grep -qF 'bun pm cache rm' <<<"$line" || { echo "bun layer without a cache purge: ${line:0:90}"; false; }
+    grep -qF 'test ! -d /root/.bun/install/cache' <<<"$line" || { echo "bun layer without the purge assertion: ${line:0:90}"; false; }
+  done < <(grep '^RUN ' <<<"$joined" | grep -E 'bun install|\./setup')
+  [ "$n" -eq 2 ]
 }
 
 # --- Managed Claude Code policy -------------------------------------------------
