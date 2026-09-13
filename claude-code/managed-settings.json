@@ -34,5 +34,6 @@
         { "name": "GBRAIN_HOME", "mode": "deny" }
       ]
     }
-  }
+  },
+  "autoUpdatesChannel": "stable"
 }

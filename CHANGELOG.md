@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.1.1] - 2026-09-13
+
+### Changed
+- `claude-code/managed-settings.json` now sets `autoUpdatesChannel: "stable"` (settings-reference.md#autoupdateschannel), so background auto-updates and `claude update` follow the roughly-week-old stable release rather than latest. Measured today in the live container: Claude Code auto-updated itself past the image's pinned version at first launch, and a command that hit the update window failed with `/usr/bin/claude: 2: exec: /usr/local/bin/claude: not found`. Auto-updates stay ON — per the upstream-drift rule, being behind upstream is itself a divergence — this only bounds which releases the updater can land the container on. `tests/unit/managed-settings.test.mjs` asserts the key, its value, and the new 7-key top-level set.
+
 ## [2.0.1.0] - 2026-09-13
 
 ### Added

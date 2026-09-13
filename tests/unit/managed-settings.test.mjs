@@ -18,7 +18,7 @@
 //                        permissions.blockReadsOutsideWorkingDirectories /
 //                        allowManagedPermissionRulesOnly /
 //                        disableClaudeAiConnectors / allowedMcpServers /
-//                        allowManagedMcpServersOnly
+//                        allowManagedMcpServersOnly / autoupdateschannel
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -142,6 +142,17 @@ test("only the loopback brain MCP endpoint is allowed, and only from managed set
   }
 });
 
+test("background auto-updates follow the stable release channel", () => {
+  // settings-reference.md#autoupdateschannel: "stable" trails "latest" by
+  // about a week and skips releases with major regressions. Measured
+  // 2026-09-13: Claude Code auto-updated itself past the image's pinned
+  // version at first launch and a command that hit the update window failed
+  // with `/usr/bin/claude: 2: exec: /usr/local/bin/claude: not found`.
+  // Auto-updates stay ON (upstream-drift rule); this only bounds which
+  // releases they can land on.
+  assert.equal(policy.autoUpdatesChannel, "stable");
+});
+
 test("the policy declares no key outside the documented managed set", () => {
   // A typo'd or invented key is silently ignored by Claude Code, so the policy
   // would read as enforced while doing nothing.
@@ -149,6 +160,7 @@ test("the policy declares no key outside the documented managed set", () => {
     "allowManagedMcpServersOnly",
     "allowManagedPermissionRulesOnly",
     "allowedMcpServers",
+    "autoUpdatesChannel",
     "disableClaudeAiConnectors",
     "permissions",
     "sandbox",
