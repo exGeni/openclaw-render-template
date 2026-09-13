@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.1.0] - 2026-09-13
+
+### Added
+- The image is now also the runtime for ACP-spawned Claude Code **workers**. Four additions, each pinned and contract-tested the way `@anthropic-ai/claude-code` already was:
+  - `bubblewrap` and `socat` on the first apt line — Claude Code's Linux sandbox dependencies. With `sandbox.failIfUnavailable: true` in the managed policy, a worker session exits at startup without them.
+  - `@openai/codex@0.154.0`, a pinned global npm install; its platform binary resolves through `optionalDependencies`, so one spec covers amd64 and arm64.
+  - `agy` 1.2.2 (Antigravity CLI) as a baked static binary: `AGY_VERSION`, the immutable `AGY_BUILD` release path and the vendor's own SHA-512 per arch go in `baked-tools.env`, and the `tools` stage verifies them like Caddy and Bun. The vendor's `curl | bash` installer is not used — it pipes into a shell (contract-forbidden here) and resolves a moving manifest. `ENV AGY_CLI_DISABLE_AUTO_UPDATE=true` stops the 15-minute self-updater from replacing the verified binary.
+  - gstack at commit `71f6048e` (VERSION 1.84.1.0), cloned into `/root/.claude/skills/gstack` and built with its own `./setup`, per gstack `docs/OPENCLAW.md` "Installation" step 1. Only step 1 is image state; the ClawHub native skills and the dispatch block are gateway/volume state.
+- `/etc/claude-code/managed-settings.json`, copied from the new repo file `claude-code/managed-settings.json` (root-owned `0644`, parsed by `node` at build). Sandbox on with no unsandboxed retry, `denyRead` over `/data/.env`, `/data/agents`, `/data/.openclaw`, `/etc/claude-code` and `/proc`, `credentials.envVars` `deny` for every `GBRAIN_*` variable (names only), reads outside the working directories blocked, permission rules and the MCP allowlist managed-only, claude.ai connectors off, and one allowed MCP endpoint at `http://127.0.0.1:3131/*`. A new unit test parses the file and asserts every key; new contract tests cover the pins, the COPY path and ownership, and the absence of any `hooks/` directory or launcher script in the image.
+
+### Notes
+- Not verified by a build in this change: `npm test` (unit + contract, no Docker) is green apart from a failure that predates it (`Dockerfile: declares no ARG` vs the `ARG GBRAIN_REF` line added with the gbrain CLI layer). `npm run test:e2e` builds the image and was not run.
+
 ## [2.0.0.6] - 2026-09-09
 
 ### Changed
